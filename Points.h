@@ -14,22 +14,30 @@
 class Points {
 public:
     int Nr;                         // Point index
-    double X;                        // Reference coordinates
-    double x;                        // Current coordinates
-    std::vector<int> neighbours;     // Neighbor list
-    std::vector<double> neighborsx;  // Current coordinates of neighbors
-    std::vector<double> neighborsX;  // Reference coordinates of neighbors
+    std::vector<double> X;                        // Reference coordinates
+    std::vector<double> x;                        // Current coordinates
+    std::vector<double> NI;                         // 1-neighbour interaction
+    std::vector<std::tuple<int, int>> NInII;             // 2-neighbour interaction
+    std::vector<std::vector<std::vector<int>>> neighbours;     // Neighbor list
+    std::vector<std::vector<double>> neighborsx;  // Current coordinates of neighbors
+    std::vector<std::vector<double>> neighborsX;  // Reference coordinates of neighbors
     std::string Flag;                // Patch/Point/Right Patch flag
-    int BCflag{};                    // 0: Dirichlet; 1: Neumann
-    double BCval{};                  // Boundary condition value
-    int DOF{};                       // Global degree of freedom
-    int DOC{};                       // Constraint flag
-    int n1 = 0;                      // Number of 1-neighbor interactions
+    std::vector<double> BCflag{};                    // 0: Dirichlet; 1: Neumann
+    std::vector<double> BCval{};                  // Boundary condition value
+    std::vector<double> DOF{};                       // Global degree of freedom
+    std::vector<double> DOC{};                       // Constraint flag
+    int n1 = 0;                      // Number of 1-neighbour interactions
+    int n2 = 0;                      // Number of 2-neighbour interactions
     double volume;                   // Volume
-    double psi{};                    // Energy
-    double residual{};               // Residual
-    std::vector<double> stiffness{}; // Tangential stiffness per neighbor
-    double JI{};                  // Effective volume
+    double psi{};                       // Energy
+    Eigen::VectorXd R1;                         // 1-neighbour residual
+    Eigen::VectorXd R2;                         // 2-neighbour residual
+    Eigen::VectorXd residual{};                  // Residual
+    Eigen::MatrixXd K1;
+    Eigen::MatrixXd K2;
+    Eigen::MatrixXd stiffness{};    // Tangential stiffness per neighbor
+    double JI{};                        // 1-neighbour Effective volume
+    double JII{};                       // 2-neighbour effective volume
 
     Points();  // Default constructor
 };

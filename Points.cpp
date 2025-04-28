@@ -8,14 +8,129 @@
 Points::Points() : Nr(0), X(0.0), x(0.0), volume(0.0) {}
 
 // Mesh generation function
-std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta,
-                         int number_of_right_patches, int& DOFs, int& DOCs, double d)
+
+#include "mesh.h"
+#include <Eigen/Dense>
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+
+Eigen::Matrix3d Compute_FF(int PD, double d, const std::string& DEFflag) {
+    Eigen::Matrix3d I = Eigen::Matrix3d::Identity(); // Identity matrix
+    Eigen::Matrix3d FF = Eigen::Matrix3d::Zero(); // Initialize FF as zero matrix
+
+    if (DEFflag == "EXT") {
+        FF = I;
+        FF(0, 0) = 1 + d;
+    } else if (DEFflag == "EXP") {
+        FF = (1 + d) * I;
+    } else if (DEFflag == "SHR") {
+        FF = I;
+        FF(1, 0) = d;
+    }
+    return FF;
+}
+
+// Robust DOF assignment with comprehensive validation
+void AssignDOF(std::vector<Points>& point_list, int PD, int& DOFs, int& DOCs) {
+    DOFs = 0;
+    DOCs = 0;
+
+    for (auto& point : point_list) {
+        point.DOF.setZero();
+        point.DOC.setZero();
+
+        // Assign DOF for free points (regular points)
+        if (point.Flag == "Point") {
+            for (int dim = 0; dim < PD; dim++) {
+                point.DOF(dim) = ++DOFs;
+            }
+            point.DOFs = PD;
+            point.DOCs = 0;
+        }
+        // Assign DOC for constrained points (fixed boundary conditions)
+        else if (point.Flag == "Patch" || point.Flag == "RightPatch") {
+            for (int dim = 0; dim < PD; dim++) {
+                point.DOC(dim) = ++DOCs;
+            }
+            point.DOFs = 0;
+            point.DOCs = PD;
+        }
+    }
+
+    // Final validation
+    int total_point_dofs = 0;
+    for (const auto& point : point_list) {
+        total_point_dofs += point.DOFs;
+    }
+
+    if (total_point_dofs != DOFs) {
+        throw std::runtime_error("Total DOFs do not match point-wise calculation");
+    }
+}
+
+std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta, int number_of_right_patches, int& DOFs, int& DOCs, double d, const std::string& DEFflag, int PD)
 {
     std::vector<Points> point_list;
     const int number_of_points = std::floor(domain_size / Delta) + 1;
     int total_points = number_of_patches + number_of_right_patches + number_of_points;
     int index = 0;
-    double FF = 1 + d;
+
+    Eigen::MatrixXd FF = Eigen::MatrixXd::Identity(PD, PD);
+
+    switch (DEFflag)
+    {
+        case "EXT":
+            FF(0,0) = 1 + d;
+
+        case "EXP":
+            FF = (1 + d) * Eigen::MatrixXd::Identity(PD, PD);
+
+        case "SHR":
+            FF(1,0) = d;
+    }
+
+    switch (PD)
+    {
+        case 1:
+            for (int i = 0; i < total_points; i++) {
+                Points point;
+                point.Nr = index++;
+                point.X = {(Delta / 2) + i * Delta, 0 ,0};
+                point.x = point.X;
+                point.neighbours.clear();
+                point.neighborsx.clear();
+                point.neighborsX.clear();
+
+                if (i < number_of_patches) {
+                    point.Flag = "Patch";
+                    point.BCval = {0,0,0};
+                    point.BCflag = {0,0,0};
+                    point.DOC = ++DOCs;
+                }
+                else if (i >= number_of_patches + number_of_points) {
+                    point.Flag = "RightPatch";
+                    point.BCval = d;
+                    point.BCflag = 0;
+                    point.DOC = ++DOCs;
+                }
+                else {
+                    point.Flag = "Point";
+                    point.BCflag = 1;
+                    point.BCval = (FF * point.X) - point.X;
+                    point.DOF = ++DOFs;
+                }
+
+                point.volume = 1;
+                point_list.push_back(point);
+            }
+
+        case 2:
+
+    }
+
 
     for (int i = 0; i < total_points; i++) {
         Points point;
@@ -96,7 +211,7 @@ void neighbour_list(std::vector<Points>& point_list, double& delta)
 //     stiffness = -Kval  when a ≠ b  → (δₐᵦ = 0)
 
 // Calculate tangent stiffness and energy
-void calculate_rk(std::vector<Points>& point_list, double C1, double delta)
+void calculate_rk(std::vector<Points>& point_list, double C1, double delta, int PD)
 {
     constexpr double pi = 3.14159265358979323846;
     double Vh = (4.0 / 3.0) * pi * std::pow(delta, 3);
@@ -122,8 +237,9 @@ void calculate_rk(std::vector<Points>& point_list, double C1, double delta)
         const int NNgbrE = neighborsE.size(); // Extended neighbor count
 
         // Resize stiffness to accommodate all neighbors including self
-        i.stiffness.clear();
-        i.stiffness.resize(NNgbrE, 0.0);
+        i.stiffness.resize(PD * PD, NNgbrE);
+        i.K1.resize(PD * PD, NNgbrE);
+        i.K2.resize(PD * PD, NNgbrE);
 
         for (size_t j = 0; j < i.n1; j++) {
             double XiI = i.neighborsX[j] - i.X;
