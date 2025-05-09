@@ -19,28 +19,44 @@ void write_vtk_2d(const std::vector<Points>& point_list, const std::string& file
     }
 
     vtk_file << "# vtk DataFile Version 4.2\n";
-    vtk_file << "1D Peridynamics Output\n";
+    vtk_file << "2D Peridynamics Output\n";
     vtk_file << "ASCII\n";
     vtk_file << "DATASET POLYDATA\n";
     vtk_file << "POINTS " << point_list.size() << " float\n";
 
+    // Write 2D points (x, y, 0.0)
     for (const auto& point : point_list) {
-        vtk_file << std::fixed << std::setprecision(6);
-        vtk_file << point.x << " 0.0 0.0\n";
+        vtk_file << std::fixed << std::setprecision(6)
+                 << point.x[0] << " "   // X-coordinate
+                 << point.x[1] << " "   // Y-coordinate
+                 << "0.0\n";            // Z=0 for 2D
     }
 
-    // Add lines connecting adjacent points to emphasize horizontal layout
-    vtk_file << "LINES " << (point_list.size()-1) << " " << (point_list.size()-1)*3 << "\n";
-    for (size_t i = 0; i < point_list.size()-1; i++) {
-        vtk_file << "2 " << i << " " << (i+1) << "\n";
+    // Define vertices
+    vtk_file << "VERTICES " << point_list.size() << " " << point_list.size() * 2 << "\n";
+    for (size_t i = 0; i < point_list.size(); i++) {
+        vtk_file << "1 " << i << "\n";
     }
 
+    // Point data section
     vtk_file << "POINT_DATA " << point_list.size() << "\n";
 
-    vtk_file << "SCALARS BC int 1\n";
-    vtk_file << "LOOKUP_TABLE default\n";
+    // First: BC flags as integer data
+    vtk_file << "SCALARS BC_flag int 1\n";
+    vtk_file << "LOOKUP_TABLE bc_table\n";
     for (const auto& point : point_list) {
         vtk_file << point.BCflag << "\n";
+    }
+
+    // Second: Direct RGB color specification
+    vtk_file << "SCALARS Color unsigned_char 3\n";
+    vtk_file << "LOOKUP_TABLE color_table 2\n";  // 2 entries in table
+    vtk_file << "255 0 0\n";  // Red for entry 0
+    vtk_file << "0 0 255\n";  // Blue for entry 1
+
+    // Map colors based on BCflag
+    for (const auto& point : point_list) {
+        vtk_file << (point.BCflag(0) == 1 ? "0 " : "1 "); // Index into color table
     }
 
     vtk_file.close();
@@ -58,11 +74,11 @@ int main() {
     double domain_size = 1.0;
     double delta = 0.301;
     double Delta = 0.1;
-    double d = 1.0;
+    double d = 1.0e-4;
     int number_of_patches = 3;
     int number_of_right_patches = 1;
-    double C1 = 1.0;
-    double C2 = 1.0;
+    double C1 = 10.0;
+    double C2 = 10.0;
     std::string DEFflag = "EXT";
     int DOFs = 0;
     int DOCs = 0;
@@ -73,7 +89,7 @@ int main() {
     neighbour_list(points, delta);
 
     // Debugging the points and their neighbours
-
+/*
     for (const auto& i : points) {
         std::cout << "Nr: " << i.Nr << std::endl;
         std::cout << "X: [ " << i.X.transpose() << " ]" << std::endl;
@@ -87,7 +103,7 @@ int main() {
         }
         std::cout << "]";
         std::cout << "\nNumber of 1-neighbour interactions for point " << i.Nr << ": " << i.n1 << std::endl;
-      /*  std::cout << "2-Neighbours of " << i.Nr << " are: [";
+       std::cout << "2-Neighbours of " << i.Nr << " are: [";
         for (const auto& p : i.NInII)
         {
             std::cout << "{ " << p.first << ", " << p.second << " } ";
@@ -95,16 +111,17 @@ int main() {
         std::cout << std::endl;
         std::cout << "]";
         std::cout << "\nNumber of 2-neighbour interactions for point " << i.Nr << ": " << i.n2 << std::endl;
-        std::cout << std::endl;*/
+        std::cout << std::endl;
         std::cout << std::endl;
     }
+    */
 
 
     // Write initial mesh to VTK
     write_vtk_2d(points, "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/initial.vtk");
 
     // Newton-Raphson setup
-    int steps = 10;
+    int steps = 1;
     double load_step = (1.0 / steps);
     double tol = 1e-6;
     int max_try = 10;

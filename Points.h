@@ -5,7 +5,6 @@
 #ifndef POINTS_H
 #define POINTS_H
 
-#pragma once
 #include <vector>
 #include <string>
 #include <Eigen/Dense>
@@ -13,43 +12,46 @@
 
 class Points {
 public:
-    int Nr;                                     // Point index
-    Eigen::Vector3d X;                        // Reference coordinates
-    Eigen::Vector3d x;                        // Current coordinates
-    std::vector<int> NI;                         // 1-neighbour interaction
-    std::vector<std::pair<int,int>> NInII;             // 2-neighbour interaction
-    //std::vector<std::vector<std::vector<int>>> neighbours;     // Neighbor list
-    std::vector<Eigen::Vector3d> neighborsx;  // Current coordinates of neighbors
-    std::vector<Eigen::Vector3d> neighborsX;  // Reference coordinates of neighbors
-    std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> neighbors2x;
-    std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> neighbors2X;
-    std::string Flag;                // Patch/Point/Right Patch flag
-    Eigen::Vector3d BCflag{};                    // 0: Dirichlet; 1: Neumann
-    Eigen::Vector3d BCval{};                  // Boundary condition value
-    Eigen::Vector3d DOF{};                       // Global degree of freedom
-    Eigen::Vector3d DOC{};                       // Constraint flag
-    int n1 = 0;                      // Number of 1-neighbour interactions
-    int n2 = 0;                      // Number of 2-neighbour interactions
-    double volume;                   // Volume
-    double psi{};                       // Energy
-    Eigen::Vector3d R1;                         // 1-neighbour residual
-    Eigen::Vector3d R2;                         // 2-neighbour residual
-    Eigen::Vector3d residual{};                  // Residual
+    int Nr;
+    Eigen::Vector2d X;
+    Eigen::Vector2d x;
+    std::vector<int> NI;
+    std::vector<std::pair<int,int>> NInII;
+    std::vector<Eigen::Vector2d> neighboursx;
+    std::vector<Eigen::Vector2d> neighboursX;
+    std::vector<std::pair<Eigen::Vector2d, Eigen::Vector2d>> neighbours2x;
+    std::vector<std::pair<Eigen::Vector2d, Eigen::Vector2d>> neighbours2X;
+    std::string Flag;
+    Eigen::Vector2d BCflag;
+    Eigen::Vector2d BCval;
+    Eigen::Vector2d DOF;
+    Eigen::Vector2d DOC;
+    int n1 = 0;
+    int n2 = 0;
+    double volume;
+    double psi;
+    Eigen::Vector2d R1;
+    Eigen::Vector2d R2;
+    Eigen::Vector2d residual;
     Eigen::MatrixXd K1;
     Eigen::MatrixXd K2;
-    Eigen::MatrixXd stiffness{};    // Tangential stiffness per neighbor
-    double JI{};                        // 1-neighbour Effective volume
-    double JII{};                       // 2-neighbour effective volume
+    Eigen::MatrixXd stiffness;
+    double JI;
+    double JII;
 
-    Points();  // Default constructor
+    Points();
 };
 
-// Function declarations
-std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta, int number_of_right_patches, int& DOFs, int& DOCs, double d,const std::string& DEFflag, int PD);
+std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta, int number_of_right_patches, int& DOFs, int& DOCs, double d, const std::string& DEFflag, int PD);
 void neighbour_list(std::vector<Points>& point_list, double& delta);
+double psifunc1(const Eigen::Vector2d& XiI, const Eigen::Vector2d& xiI, double C1);
+double psifunc2(const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII, const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, int C2);
+Eigen::Vector2d PP1(const Eigen::Vector2d& XiI, const Eigen::Vector2d& xiI, double C1);
+Eigen::Vector2d PP2(const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII,const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, int C2);
+Eigen::MatrixXd AA1(int PD, const Eigen::Vector2d& XiI, const Eigen::Vector2d& xiI, double C1);
+std::pair<Eigen::MatrixXd, Eigen::MatrixXd> AA2(int PD, const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII,const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, int C2);
 void calculate_rk(std::vector<Points>& point_list, double C1, double C2, double delta, int PD);
 void assembly(int PD, const std::vector<Points>& point_list, int DOFs, Eigen::VectorXd& R, Eigen::SparseMatrix<double>& K, const std::string& flag);
 void update_points(int PD, std::vector<Points>& point_list, double LF, Eigen::VectorXd& dx, const std::string& Update_flag);
 
-
-#endif //POINTS_H
+#endif // POINTS_H
