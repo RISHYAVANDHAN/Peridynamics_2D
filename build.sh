@@ -1,14 +1,12 @@
 #!/bin/bash
+set -e
 
-# Initialize and update submodules
-git submodule update --init --recursive
-
-# Create build directory
+# Create build directory if it doesn't exist
 mkdir -p build
 cd build
 
-# Run CMake to configure the project
+# Configure CMake and build
 cmake ..
+cmake --build .
 
-# Build the project
-make
+echo "Build complete. Executable is in build/peridynamics_2d"
