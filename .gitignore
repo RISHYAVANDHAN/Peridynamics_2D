@@ -1,0 +1,6 @@
+# Ignore build artifacts
+build/
+cmake-build-debug/
+
+# Ignore Eigen submodule build files (if any)
+external/eigen/build/
