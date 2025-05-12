@@ -1,16 +1,22 @@
-cmake_minimum_required(VERSION 3.29)
+cmake_minimum_required(VERSION 3.10)
 project(Peridynamics_2D)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 17)
 
-# Find Eigen3 package
-find_package(Eigen3 CONFIG REQUIRED)
+# Include Eigen
+add_subdirectory(external/eigen)
 
-# Define the executable target and source files
-add_executable(Peridynamics_2D
+# Your executable
+add_executable(peridynamics_2d
         main.cpp
-        Points.h
-        Points.cpp)
+        Points.cpp
+)
 
-# Link the Eigen3 library to your target
-target_link_libraries(Peridynamics_2D PRIVATE Eigen3::Eigen)
+# Link Eigen (Header-only — no linking needed, just include dirs)
+target_include_directories(peridynamics_2d PRIVATE
+        ${EIGEN3_INCLUDE_DIR}
+        external/eigen
+)
+
+# Optional: include your project-specific headers
+target_include_directories(peridynamics_2d PRIVATE ${CMAKE_SOURCE_DIR})

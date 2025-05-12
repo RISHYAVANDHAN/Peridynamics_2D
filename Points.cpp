@@ -34,9 +34,7 @@ Points::Points()
       JII(0.0)
 {}
 
-std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta,
-                        int number_of_right_patches, int& DOFs, int& DOCs,
-                        double d, const std::string& DEFflag, int PD)
+std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta, int number_of_right_patches, int& DOFs, int& DOCs, double d, const std::string& DEFflag, int PD)
 {
     // Original mesh generation logic with 2D coordinates
     std::vector<Points> point_list;
@@ -72,6 +70,8 @@ std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta
                 point.BCval = Eigen::Vector2d::Zero();
                 point.BCflag = Eigen::Vector2d::Zero();
                 point.DOC[0] = ++DOCs;
+                //point.DOC[1] = ++DOCs;
+
             }
             else if ((point.X[0] > (Delta * (number_of_points + number_of_patches))))
             {
@@ -79,21 +79,21 @@ std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta
                 point.BCval = Eigen::Vector2d(d, 0);
                 point.BCflag = Eigen::Vector2d::Zero();
                 point.DOC[0] = ++DOCs;
+                //point.DOC[1] = ++DOCs;
             }
             else
             {
                 point.Flag = "Point";
-                point.BCflag = Eigen::Vector2d(1, 0);
+                point.BCflag = Eigen::Vector2d(1,0);
                 point.BCval = (FF * point.X) - point.X;
                 point.DOF[0] = ++DOFs;
+                //point.DOF[1] = ++DOFs;
             }
 
             point.volume = 1;
             point_list.push_back(point);
         }
     }
-
-    // Original DOF recalculation
     DOFs = 0;
     for (auto& point : point_list) {
         if (point.BCflag[0] == 1) {
@@ -142,10 +142,8 @@ void neighbour_list(std::vector<Points>& point_list, double& delta)
                     if ((std::abs(A) < 1e-6) && l.norm() < delta)
                     {
                         i.NInII.push_back(std::make_pair(i.NI[p], i.NI[q]));
-                        i.neighbours2x.push_back(std::make_pair(point_list[i.NI[p]].x,
-                                                point_list[i.NI[q]].x));
-                        i.neighbours2X.push_back(std::make_pair(point_list[i.NI[p]].X,
-                                                point_list[i.NI[q]].X));
+                        i.neighbours2x.push_back(std::make_pair(point_list[i.NI[p]].x, point_list[i.NI[q]].x));
+                        i.neighbours2X.push_back(std::make_pair(point_list[i.NI[p]].X, point_list[i.NI[q]].X));
                         i.n2++;
                     }
                 }
@@ -287,7 +285,7 @@ void calculate_rk(std::vector<Points>& point_list, double C1, double C2, double 
             Eigen::Vector2d R1_temp = PP1(XiI, xiI, C1);
 
             i.psi += JI * psi1;
-            i.residual += JI * R1_temp;
+            i.R1 += JI * R1_temp;
 
             //std::cout << "updated psi and residual for 1-neighbor" << std::endl;
 
@@ -319,7 +317,7 @@ void calculate_rk(std::vector<Points>& point_list, double C1, double C2, double 
             Eigen::Vector2d R2_temp = PP2(XiI, XiII, xiI, xiII, C2);
 
             i.psi += JInII * psi2;
-            i.residual += JInII * R2_temp;
+            i.R2 += JInII * R2_temp;
 
             //std::cout << "updated psi and residual for 2-neighbor" << std::endl;
 
@@ -354,71 +352,123 @@ void assembly(const int PD, const std::vector<Points>& point_list, int DOFs,
 {
     if (flag == "residual") {
         R = Eigen::VectorXd::Zero(DOFs);
-
         for (const auto& point : point_list) {
-            Eigen::Vector2d R_P = point.residual;
-            Eigen::Vector2d BCflg = point.BCflag;
-            Eigen::Vector2d DOF = point.DOF;
-
-            for (int ii = 0; ii < PD; ii++) {
-                if (BCflg[ii] == 1 && DOF[ii] > 0 && DOF[ii] <= DOFs) {
-                    R[DOF[ii] - 1] += R_P[ii];
-                    //std::cout << "[Residual] Added " << R_P[ii] << " at DOF " << DOF[ii] << std::endl;
+            for (int d = 0; d < PD; d++) {
+                if (point.BCflag[d] == 1 && point.DOF[d] > 0 && point.DOF[d] <= DOFs) {
+                    const int index = static_cast<int>(point.DOF[d]) - 1;
+                    if (index >= 0 && index < R.size()) {
+                        R(index) += point.residual(d);
+                    }
                 }
             }
         }
     }
     else if (flag == "stiffness") {
-        K.setZero();
         std::vector<Eigen::Triplet<double>> triplets;
 
         for (const auto& point : point_list) {
-            Eigen::MatrixXd K_P = point.stiffness;
-            Eigen::Vector2d BCflg_p = point.BCflag;
-            Eigen::Vector2d DOF_p = point.DOF;
+            const auto& stiffness = point.stiffness;
+            const auto& nbrs_1 = point.NI;      // 1-neighbor list
+            const auto& pairs_2 = point.NInII;  // 2-neighbor pairs
 
-            for (int pp = 0; pp < PD; pp++) {
-                if (BCflg_p[pp] == 1 && DOF_p[pp] > 0 && DOF_p[pp] <= DOFs) {
-                    std::vector<int> neighboursEI = point.NI;
-                    neighboursEI.push_back(point.Nr);
+            // Create extended neighbor list (1-neighbors + self)
+            std::vector<int> extended_nbrs = nbrs_1;
+            extended_nbrs.push_back(point.Nr);  // MATLAB-style self-inclusion
 
-                    for (size_t q = 0; q < neighboursEI.size(); q++) {
-                        int nbr_idx = neighboursEI[q];
-                        if (nbr_idx >= 0 && nbr_idx < point_list.size()) {
-                            Eigen::MatrixXd K_PQ = Eigen::Map<const Eigen::MatrixXd>(
-                                K_P.col(q).data(), PD, PD);
+            // Column indices mapping:
+            // [0...n1-1] -> 1-neighbors
+            // [n1]       -> self
+            // [n1+1...]  -> 2-neighbor pairs (2 columns per pair)
 
-                            Eigen::Vector2d BCflg_q = point_list[nbr_idx].BCflag;
-                            Eigen::Vector2d DOF_q = point_list[nbr_idx].DOF;
+            // Process 1-neighbor interactions (including self)
+            for (size_t col = 0; col < extended_nbrs.size(); col++) {
+                const int q = extended_nbrs[col];  // Neighbor index
+                if (q < 0 || q >= point_list.size()) continue;
 
-                            for (int qq = 0; qq < PD; qq++) {
-                                if (BCflg_q[qq] == 1 && DOF_q[qq] > 0 && DOF_q[qq] <= DOFs) {
-                                    triplets.emplace_back(
-                                        DOF_p[pp] - 1,
-                                        DOF_q[qq] - 1,
-                                        K_PQ(pp, qq)
-                                    );
-                                    //std::cout << "[Stiffness] K(" << DOF_p[pp] << "," << DOF_q[qq] << ") = " << K_PQ(pp, qq) << std::endl;
-                                }
+                // Extract PDxPD block for this neighbor column
+                const Eigen::MatrixXd K_block = Eigen::Map<const Eigen::MatrixXd>(
+                    stiffness.col(col).data(), PD, PD);
+
+                // Add contributions to global matrix
+                for (int i = 0; i < PD; i++) {
+                    if (point.BCflag[i] != 1 || point.DOF[i] <= 0) continue;
+                    const int row = point.DOF[i] - 1;
+
+                    const auto& nbr_point = point_list[q];
+                    for (int j = 0; j < PD; j++) {
+                        if (nbr_point.BCflag[j] == 1 && nbr_point.DOF[j] > 0) {
+                            const int col_idx = nbr_point.DOF[j] - 1;
+                            triplets.emplace_back(row, col_idx, K_block(i,j));
+                        }
+                    }
+                }
+            }
+
+            // Process 2-neighbor pair interactions
+            for (size_t pair_idx = 0; pair_idx < pairs_2.size(); pair_idx++) {
+                const auto& pair = pairs_2[pair_idx];
+                const int q = pair.first;   // First neighbor in pair
+                const int r = pair.second;  // Second neighbor in pair
+
+                // Pair columns are offset after 1-neighbor columns
+                const int col_q = extended_nbrs.size() + 2*pair_idx;
+                const int col_r = col_q + 1;
+
+                // Extract stiffness blocks for both pair members
+                const Eigen::MatrixXd K_block_q = Eigen::Map<const Eigen::MatrixXd>(
+                    stiffness.col(col_q).data(), PD, PD);
+                const Eigen::MatrixXd K_block_r = Eigen::Map<const Eigen::MatrixXd>(
+                    stiffness.col(col_r).data(), PD, PD);
+
+                // Add contributions for first pair member (q)
+                if (q >= 0 && q < point_list.size()) {
+                    for (int i = 0; i < PD; i++) {
+                        if (point.BCflag[i] != 1 || point.DOF[i] <= 0) continue;
+                        const int row = point.DOF[i] - 1;
+
+                        const auto& nbr_point = point_list[q];
+                        for (int j = 0; j < PD; j++) {
+                            if (nbr_point.BCflag[j] == 1 && nbr_point.DOF[j] > 0) {
+                                const int col_idx = nbr_point.DOF[j] - 1;
+                                triplets.emplace_back(row, col_idx, K_block_q(i,j));
+                            }
+                        }
+                    }
+                }
+
+                // Add contributions for second pair member (r)
+                if (r >= 0 && r < point_list.size()) {
+                    for (int i = 0; i < PD; i++) {
+                        if (point.BCflag[i] != 1 || point.DOF[i] <= 0) continue;
+                        const int row = point.DOF[i] - 1;
+
+                        const auto& nbr_point = point_list[r];
+                        for (int j = 0; j < PD; j++) {
+                            if (nbr_point.BCflag[j] == 1 && nbr_point.DOF[j] > 0) {
+                                const int col_idx = nbr_point.DOF[j] - 1;
+                                triplets.emplace_back(row, col_idx, K_block_r(i,j));
                             }
                         }
                     }
                 }
             }
         }
+
         K.resize(DOFs, DOFs);
         K.setFromTriplets(triplets.begin(), triplets.end());
+        Eigen::MatrixXd A = Eigen::MatrixXd(K);
+        std::cout<<"Assembled global stiffness matrix: "<<std::endl<<A<<std::endl;
+        std::cout<<"Assembled global residual vector: "<<std::endl<<R.transpose()<<std::endl;
     }
 }
 
-void update_points(const int PD, std::vector<Points>& point_list, double LF,
-                 Eigen::VectorXd& dx, const std::string& Update_flag)
+void update_points(const int PD, std::vector<Points>& point_list, double LF, Eigen::VectorXd& dx, const std::string& Update_flag)
 {
     if (Update_flag == "Prescribed") {
         for (auto& i : point_list) {
             for (int p = 0; p < PD; p++) {
                 if (i.BCflag[p] == 0) {
-                    i.x += LF * i.BCval;
+                    i.x[p] += i.X[p] + (LF * i.BCval[p]);
                     //std::cout << "Updated prescribed point " << i.Nr << " coord " << p << " to " << i.x[p] << std::endl;
                 }
             }
@@ -450,7 +500,7 @@ void update_points(const int PD, std::vector<Points>& point_list, double LF,
             if (idx1 >= 0 && idx1 < point_list.size() &&
                 idx2 >= 0 && idx2 < point_list.size()) {
                 point.neighbours2x[i] = std::make_pair( point_list[idx1].x, point_list[idx2].x);
-            }
+                }
         }
     }
 }

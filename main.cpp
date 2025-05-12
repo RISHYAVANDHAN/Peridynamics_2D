@@ -77,8 +77,8 @@ int main() {
     double d = 1.0e-4;
     int number_of_patches = 3;
     int number_of_right_patches = 1;
-    double C1 = 10.0;
-    double C2 = 10.0;
+    double C1 = 1.0;
+    double C2 = 1.0;
     std::string DEFflag = "EXT";
     int DOFs = 0;
     int DOCs = 0;
@@ -185,6 +185,7 @@ int main() {
 
             update_points(PD, points, LF, dx, "Displacement");
             error_counter++;
+            std::cout<<std::endl;
         }
         std::ostringstream load_filename;
         load_filename << "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/load_" << std::fixed << std::setprecision(2) << LF << ".vtk";
@@ -196,6 +197,7 @@ int main() {
         for (const auto& p : points) {
             std::cout << "Point " << p.Nr << ": x = " << p.x.transpose() << ", displacement = " << (p.x[0] - p.X[0]) << std::endl;
         }
+        std::cout<<std::endl;
     }
 
     write_vtk_2d(points, "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/final.vtk");
