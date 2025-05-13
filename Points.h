@@ -22,10 +22,10 @@ public:
     std::vector<std::pair<Eigen::Vector2d, Eigen::Vector2d>> neighbours2x;
     std::vector<std::pair<Eigen::Vector2d, Eigen::Vector2d>> neighbours2X;
     std::string Flag;
-    Eigen::Vector2d BCflag;
+    Eigen::Vector2i BCflag;
     Eigen::Vector2d BCval;
-    Eigen::Vector2d DOF;
-    Eigen::Vector2d DOC;
+    Eigen::Vector2i DOF;
+    Eigen::Vector2i DOC;
     int n1 = 0;
     int n2 = 0;
     double volume;
@@ -43,15 +43,15 @@ public:
 };
 
 std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta, int number_of_right_patches, int& DOFs, int& DOCs, double d, const std::string& DEFflag, int PD);
-void neighbour_list(std::vector<Points>& point_list, double& delta);
+void neighbour_list(std::vector<Points>& point_list, double delta);
 double psifunc1(const Eigen::Vector2d& XiI, const Eigen::Vector2d& xiI, double C1);
-double psifunc2(const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII, const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, int C2);
+double psifunc2(const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII, const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, double C2);
 Eigen::Vector2d PP1(const Eigen::Vector2d& XiI, const Eigen::Vector2d& xiI, double C1);
-Eigen::Vector2d PP2(const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII,const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, int C2);
+Eigen::Vector2d PP2(const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII,const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, double C2);
 Eigen::MatrixXd AA1(int PD, const Eigen::Vector2d& XiI, const Eigen::Vector2d& xiI, double C1);
-std::pair<Eigen::MatrixXd, Eigen::MatrixXd> AA2(int PD, const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII,const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, int C2);
+std::pair<Eigen::MatrixXd, Eigen::MatrixXd> AA2(int PD, const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII,const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, double C2);
 void calculate_rk(std::vector<Points>& point_list, double C1, double C2, double delta, int PD);
 void assembly(int PD, const std::vector<Points>& point_list, int DOFs, Eigen::VectorXd& R, Eigen::SparseMatrix<double>& K, const std::string& flag);
-void update_points(int PD, std::vector<Points>& point_list, double LF, Eigen::VectorXd& dx, const std::string& Update_flag);
+void update_points(int PD, std::vector<Points>& point_list, double LF, Eigen::VectorXd& dx, const std::string& Update_flag, double delta, int DOFs);
 
 #endif // POINTS_H

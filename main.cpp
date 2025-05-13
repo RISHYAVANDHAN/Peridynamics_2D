@@ -69,7 +69,7 @@ int main() {
     // Parameters
     const int PD = 2;
     std::cout << "\n======================================================" << std::endl;
-    std::cout << "Starting"<< PD <<"D Peridynamics Simulation" << std::endl;
+    std::cout << "Starting "<< PD <<"D Peridynamics Simulation" << std::endl;
     std::cout << "======================================================" << std::endl;
     double domain_size = 1.0;
     double delta = 0.301;
@@ -79,7 +79,7 @@ int main() {
     int number_of_right_patches = 1;
     double C1 = 1.0;
     double C2 = 1.0;
-    std::string DEFflag = "EXT";
+    std::string DEFflag = "SHR";
     int DOFs = 0;
     int DOCs = 0;
 
@@ -89,32 +89,32 @@ int main() {
     neighbour_list(points, delta);
 
     // Debugging the points and their neighbours
-/*
+
     for (const auto& i : points) {
-        std::cout << "Nr: " << i.Nr << std::endl;
-        std::cout << "X: [ " << i.X.transpose() << " ]" << std::endl;
-        std::cout << "x: [ " << i.x.transpose() << " ]" << std::endl;
-        std::cout << "Volume: " << i.volume << std::endl;
-        std::cout << "BC: [ " << i.BCflag.transpose() << " ]" << std::endl << "Flag: " << i.Flag << std::endl;
-        std::cout << "1-Neighbours of " << i.Nr << " are: [";
-        for (const auto& n : i.NI)
-        {
-            std::cout << "{ " << n << " " << "} ";
-        }
-        std::cout << "]";
-        std::cout << "\nNumber of 1-neighbour interactions for point " << i.Nr << ": " << i.n1 << std::endl;
-       std::cout << "2-Neighbours of " << i.Nr << " are: [";
-        for (const auto& p : i.NInII)
-        {
-            std::cout << "{ " << p.first << ", " << p.second << " } ";
-        }
-        std::cout << std::endl;
-        std::cout << "]";
-        std::cout << "\nNumber of 2-neighbour interactions for point " << i.Nr << ": " << i.n2 << std::endl;
-        std::cout << std::endl;
-        std::cout << std::endl;
+        //std::cout << "Nr: " << i.Nr << std::endl;
+        //std::cout << "X: [ " << i.X.transpose() << " ]" << std::endl;
+        //std::cout << "x: [ " << i.x.transpose() << " ]" << std::endl;
+        //std::cout << "Volume: " << i.volume << std::endl;
+        //std::cout << "BC: [ " << i.BCflag.transpose() << " ]" << std::endl << "Flag: " << i.Flag << std::endl;
+        //std::cout << "1-Neighbours of " << i.Nr << " are: [";
+        //for (const auto& n : i.NI)
+        //{
+        //    std::cout << "{ " << n << " " << "} ";
+        //}
+        //std::cout << "]";
+        //std::cout << "\nNumber of 1-neighbour interactions for point " << i.Nr << ": " << i.n1 << std::endl;
+        //std::cout << "2-Neighbours of " << i.Nr << " are: [";
+        //for (const auto& p : i.NInII)
+        //{
+        //    std::cout << "{ " << p.first << ", " << p.second << " } ";
+        //}
+        //std::cout << std::endl;
+        //std::cout << "]";
+        //std::cout << "\nNumber of 2-neighbour interactions for point " << i.Nr << ": " << i.n2 << std::endl;
+      //  std::cout << std::endl;
+    //    std::cout << std::endl;
     }
-    */
+    
 
 
     // Write initial mesh to VTK
@@ -124,7 +124,7 @@ int main() {
     int steps = 1;
     double load_step = (1.0 / steps);
     double tol = 1e-6;
-    int max_try = 10;
+    int max_try = 2;
     double LF = 0.0;
 
     std::cout << "======================================================" << std::endl;
@@ -146,7 +146,7 @@ int main() {
 
         std::cout<<"going into update points for displacing right patch"<<std::endl;
         // Apply prescribed displacements
-        update_points(PD ,points, LF, dx, "Prescribed");
+        update_points(PD ,points, LF, dx, "Prescribed", delta, DOFs);
         std::cout<<"coming out of update points after displacing right patch"<<std::endl;
 
         int error_counter = 1;
@@ -163,11 +163,12 @@ int main() {
             std::cout<<"coming out of assemble after assembling global R "<<std::endl;
 
             double residual_norm = R.norm();
+            double rel_norm = 0.0;
             if (error_counter == 1) {
                 normnull = residual_norm;
                 std::cout << "Initial Residual Norm: " << residual_norm << std::endl;
             } else {
-                double rel_norm = residual_norm / normnull;
+                rel_norm = (residual_norm == 0) ? 0 : (residual_norm / normnull);
                 std::cout << "Iter " << error_counter << ": Residual Norm = " << residual_norm
                           << ", Relative = " << rel_norm << std::endl;
 
@@ -183,7 +184,7 @@ int main() {
             Eigen::FullPivLU<Eigen::MatrixXd> solver(K);
             dx += solver.solve(-R);
 
-            update_points(PD, points, LF, dx, "Displacement");
+            update_points(PD, points, LF, dx, "Displacement",delta, DOFs);
             error_counter++;
             std::cout<<std::endl;
         }
@@ -197,7 +198,7 @@ int main() {
         for (const auto& p : points) {
             std::cout << "Point " << p.Nr << ": x = " << p.x.transpose() << ", displacement = " << (p.x[0] - p.X[0]) << std::endl;
         }
-        std::cout<<std::endl;
+        //std::cout<<std::endl;
     }
 
     write_vtk_2d(points, "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/final.vtk");
