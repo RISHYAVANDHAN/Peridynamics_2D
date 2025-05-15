@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build main.cpp with Eigen",
+      "type": "shell",
+      "command": "g++",
+      "args": [
+        "-g",
+        "-I./external/eigen",
+        "main.cpp",
+        "Points.cpp",
+        "-o",
+        "a.out"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gcc"]
+    }
+  ]
+}

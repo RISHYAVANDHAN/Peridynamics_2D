@@ -4,15 +4,33 @@
 #include <set>
 #include <Eigen/Sparse>
 
-Points::Points()
-    : Nr(0), X(Eigen::Vector2d::Zero()), x(Eigen::Vector2d::Zero()),
-      NI(), NInII(), neighboursx(), neighboursX(), neighbours2x(),
-      neighbours2X(), Flag(""), BCflag(Eigen::Vector2i::Zero()),
-      BCval(Eigen::Vector2d::Zero()), DOF(Eigen::Vector2i::Zero()),
-      DOC(Eigen::Vector2i::Zero()), n1(0), n2(0), volume(0.0), psi(0.0),
-      R1(Eigen::Vector2d::Zero()), R2(Eigen::Vector2d::Zero()),
-      residual(Eigen::Vector2d::Zero()), K1(), K2(), stiffness(),
-      JI(0.0), JII(0.0) {}
+Points::Points(): 
+    Nr(0), 
+    X(Eigen::Vector2d::Zero()), 
+    x(Eigen::Vector2d::Zero()),
+    NI(), 
+    NInII(), 
+    neighboursx(), 
+    neighboursX(), 
+    neighbours2x(),
+    neighbours2X(), 
+    Flag(""), 
+    BCflag(Eigen::Vector2i::Zero()),
+    BCval(Eigen::Vector2d::Zero()), 
+    DOF(Eigen::Vector2i::Zero()),
+    DOC(Eigen::Vector2i::Zero()), 
+    n1(0), 
+    n2(0), 
+    volume(0.0), 
+    psi(0.0),
+    R1(Eigen::Vector2d::Zero()), 
+    R2(Eigen::Vector2d::Zero()),
+    residual(Eigen::Vector2d::Zero()), 
+    K1(), 
+    K2(), 
+    stiffness(),
+    JI(0.0), 
+    JII(0.0) {}
 
 std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta, int number_of_right_patches, int& DOFs, int& DOCs, double d, const std::string& DEFflag, int PD) 
 {
@@ -39,17 +57,17 @@ std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta
             if (point.X(0) < (number_of_patches * Delta)) {
                 point.Flag = "Patch";
                 point.BCval = Eigen::Vector2d::Zero();
-                point.BCflag.setOnes();
-                point.DOC << ++DOCs, ++DOCs;
+                point.BCflag << 0, 0;  // Dirichlet (fixed)
+                point.DOC << ++DOCs, ++DOCs;  // Track free DOFs
             } else if (point.X(0) >= Delta * (number_of_patches + number_of_points_x)) {
                 point.Flag = "RightPatch";
-                point.BCval << d, d; 
-                point.BCflag.setOnes();
-                point.DOC << ++DOCs, ++DOCs;
+                point.BCval = (FF * point.X) - point.X; 
+                point.BCflag << 0, 0;  // Dirichlet (fixed)
+                point.DOC << ++DOCs, ++DOCs;  // Track constrained DOFs
             } else {
                 point.Flag = "Point";
                 point.BCval = (FF * point.X) - point.X;
-                point.BCflag << 0,0;
+                point.BCflag << 1, 1;  // Neumann (free)
                 point.DOF << ++DOFs, ++DOFs;
             }
 
@@ -62,6 +80,9 @@ std::vector<Points> mesh(double domain_size, int number_of_patches, double Delta
 
 void neighbour_list(std::vector<Points>& point_list, double delta) 
 {
+    
+    const double tol = 1e-6;
+
     for (auto& i : point_list) {
         i.NI.clear(); i.NInII.clear();
         i.neighboursx.clear(); i.neighboursX.clear();
@@ -69,7 +90,7 @@ void neighbour_list(std::vector<Points>& point_list, double delta)
         i.n1 = i.n2 = 0;
         std::set<std::pair<int, int>> unique_pairs;
 
-        // Find 1-neighbors
+        // Find 1-neighbors (distance < delta)
         for (const auto& j : point_list) {
             if ((i.Nr != j.Nr) && ((i.X - j.X).norm() < delta)) {
                 i.NI.push_back(j.Nr);
@@ -79,16 +100,22 @@ void neighbour_list(std::vector<Points>& point_list, double delta)
             }
         }
 
-        // Find 2-neighbor pairs
+        // Find 2-neighbor pairs (non-collinear and i-j distance < delta)
         for (size_t p = 0; p < i.NI.size(); ++p) {
-            for (size_t q = p+1; q < i.NI.size(); ++q) { // Prevent duplicate checks
+            for (size_t q = 0; q < i.NI.size(); ++q) {
+                if (p == q) continue; // Skip same point
+
                 Eigen::Vector2d XiI = point_list[i.NI[p]].X - i.X;
                 Eigen::Vector2d XiII = point_list[i.NI[q]].X - i.X;
                 
+                // Cross product magnitude (2D)
                 double A = XiI.x() * XiII.y() - XiI.y() * XiII.x();
-                Eigen::Vector2d l_vec = XiI - XiII;
                 
-                if (std::abs(A) < 1e-6 && l_vec.norm() < delta) {
+                // Distance between neighbors p and q
+                double dist = (point_list[i.NI[p]].X - point_list[i.NI[q]].X).norm();
+
+                // MATLAB condition: A > tol AND dist < delta
+                if (std::abs(A) > tol && dist < delta) {
                     auto sorted_pair = std::minmax(i.NI[p], i.NI[q]);
                     if (unique_pairs.insert(sorted_pair).second) {
                         i.NInII.push_back(sorted_pair);
@@ -104,37 +131,45 @@ void neighbour_list(std::vector<Points>& point_list, double delta)
 }
 
 double psifunc1(const Eigen::Vector2d& XiI, const Eigen::Vector2d& xiI, double C1) {
+    
     double L = XiI.norm();
-    if (L < 1e-12) return 0.0; // Prevent division by zero
     double l = xiI.norm();
+    if (L < 1e-12) return 0.0; // Prevent division by zero
     double s = (l - L)/L;
-    return C1 * 0.5 * s * s;
+    return C1 * 0.5 * s * s * L;
 }
 
 Eigen::Vector2d PP1(const Eigen::Vector2d& XiI, const Eigen::Vector2d& xiI, double C1) {
+    
     double L = XiI.norm();
-    if (L < 1e-12 || xiI.norm() < 1e-12) return Eigen::Vector2d::Zero();
-    Eigen::Vector2d eta = xiI.normalized();
-    return C1 * eta * ((xiI.norm() - L)/L);
+    double l = xiI.norm();
+    //if (L < 1e-12 || l < 1e-12) return Eigen::Vector2d::Zero();
+    Eigen::Vector2d eta = xiI/l;
+    double s = (l - L)/L;
+    return C1 * eta * s;
 }
 
 double psifunc2(const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII, const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, double C2) {
+    
     double A = XiI.x() * XiII.y() - XiI.y() * XiII.x();
     double a = xiI.x() * xiII.y() - xiI.y() * xiII.x();
     if (std::abs(A) < 1e-12) return 0.0;
-    return C2 * (1.0/3.0) * std::pow((std::abs(A)-std::abs(a))/std::abs(A), 2) * std::abs(A);
+    double s = (std::abs(a) - std::abs(A))/std::abs(A);
+    return C2 * (1.0/2.0) * std::pow(s, 2) * std::abs(A);
 }
 
 Eigen::Vector2d PP2(const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII, const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, double C2) {
+    
     double A = XiI.x() * XiII.y() - XiI.y() * XiII.x();
     double a = xiI.x() * xiII.y() - xiI.y() * xiII.x();
     if (std::abs(A) < 1e-12 || std::abs(a) < 1e-12) return Eigen::Vector2d::Zero();
     double G = (1/std::abs(A)) - (1/std::abs(a));
-    Eigen::Vector2d H = (xiII.squaredNorm() * xiI) - (xiII.dot(xiI) * xiII);
+    Eigen::Vector2d H = ((xiII.squaredNorm() * xiI) - (xiII.dot(xiI) * xiII));
     return 2.0 * C2 * G * H;
 }
 
 Eigen::MatrixXd AA1(int PD, const Eigen::Vector2d& XiI, const Eigen::Vector2d& xiI, double C1) {
+    
     double L = XiI.norm();
     double l = xiI.norm();
     if (L < 1e-12 || l < 1e-12) return Eigen::MatrixXd::Zero(PD, PD);
@@ -145,10 +180,12 @@ Eigen::MatrixXd AA1(int PD, const Eigen::Vector2d& XiI, const Eigen::Vector2d& x
 }
 
 std::pair<Eigen::MatrixXd, Eigen::MatrixXd> AA2(int PD, const Eigen::Vector2d& XiI, const Eigen::Vector2d& XiII, const Eigen::Vector2d& xiI, const Eigen::Vector2d& xiII, double C2) {
+    
     double A = XiI.x() * XiII.y() - XiI.y() * XiII.x();
     double a = xiI.x() * xiII.y() - xiI.y() * xiII.x();
-    if (std::abs(A) < 1e-12 || std::abs(a) < 1e-12) 
-        return {Eigen::MatrixXd::Zero(PD, PD), Eigen::MatrixXd::Zero(PD, PD)};
+    
+    if (std::abs(A) < 1e-12 || std::abs(a) < 1e-12) return {Eigen::MatrixXd::Zero(PD, PD), Eigen::MatrixXd::Zero(PD, PD)};
+    
     Eigen::MatrixXd II = Eigen::MatrixXd::Identity(PD, PD);
     Eigen::MatrixXd BBI1 = (xiII.dot(xiII) * II) - (xiII * xiII.transpose());
     Eigen::MatrixXd BBJ1 = (2 * xiI * xiII.transpose()) - (xiI.dot(xiII) * II) - (xiII * xiI.transpose());
@@ -156,10 +193,8 @@ std::pair<Eigen::MatrixXd, Eigen::MatrixXd> AA2(int PD, const Eigen::Vector2d& X
     Eigen::Vector2d eInII = (xiII.squaredNorm() * xiI) - (xiI.dot(xiII) * xiII);
     Eigen::Vector2d eIInI = (xiI.squaredNorm() * xiII) - (xiII.dot(xiI) * xiI);
 
-    Eigen::MatrixXd AA2I = (2*C2*((1/std::abs(A) - 1/std::abs(a))) * BBI1 + 
-                          (2*C2/std::pow(std::abs(a),3)) * (eInII * eInII.transpose()));
-    Eigen::MatrixXd AA2J = (2*C2*((1/std::abs(A) - 1/std::abs(a))) * BBJ1 +
-                          (2*C2/std::pow(std::abs(a),3)) * (eInII * eIInI.transpose()));
+    Eigen::MatrixXd AA2I = (2*C2*((1/std::abs(A) - 1/std::abs(a))) * BBI1 + (2*C2/std::pow(std::abs(a),3)) * (eInII * eInII.transpose()));
+    Eigen::MatrixXd AA2J = (2*C2*((1/std::abs(A) - 1/std::abs(a))) * BBJ1 + (2*C2/std::pow(std::abs(a),3)) * (eInII * eIInI.transpose()));
 
     return {AA2I, AA2J};
 }
@@ -214,7 +249,7 @@ void calculate_rk(std::vector<Points>& point_list, double C1, double C2, double 
             // Accumulate energy and force
             pt.psi += JI * psi1;
             pt.R1 += JI * R1_temp;
-            //std::cout << "R1_temp: " << R1_temp.transpose() << std::endl;   
+            //std::cout << "R1: " << pt.R1.transpose() << std::endl;   
 
             // Calculate stiffness contribution for each extended neighbor
             for (int b = 0; b < num_NNgbrEI; b++)
@@ -233,6 +268,7 @@ void calculate_rk(std::vector<Points>& point_list, double C1, double C2, double 
                     // Map matrix to vector column-wise
                     pt.K1.block(0, b, PD*PD, 1) = Eigen::Map<const Eigen::VectorXd>(stiffness_block.data(), PD*PD);
                 }
+                //std::cout<<pt.K1<<std::endl;
             }
         }
 
@@ -249,6 +285,7 @@ void calculate_rk(std::vector<Points>& point_list, double C1, double C2, double 
             const Eigen::Vector2d xiI  = pt.neighbours2x[j].first  - pt.x;
             const Eigen::Vector2d xiII = pt.neighbours2x[j].second - pt.x;
 
+            //std::cout << "XiI: " << XiI.transpose() << ", XiII: " << XiII.transpose() << std::endl<< "xiI: " << xiI.transpose() << ", xiII: " << xiII.transpose() << std::endl;
             // Calculate pair energy and force
             const double psi2 = psifunc2(XiI, XiII, xiI, xiII, C2);
             const Eigen::Vector2d R2_temp = PP2(XiI, XiII, xiI, xiII, C2);
@@ -256,7 +293,7 @@ void calculate_rk(std::vector<Points>& point_list, double C1, double C2, double 
             // Accumulate energy and force
             pt.psi += JInII * psi2;
             pt.R2 += JInII * R2_temp;
-            //std::cout << "R2_temp: " << R2_temp.transpose() << std::endl;
+            //std::cout << "R2: " << pt.R2.transpose() << std::endl;
 
             // Calculate stiffness contributions for each extended pair
             for (int b = 0; b < num_NNgbrEII; b++)
@@ -291,6 +328,7 @@ void calculate_rk(std::vector<Points>& point_list, double C1, double C2, double 
                     {
                         pt.K2.block(0, col_idx+1, PD*PD, 1) = Eigen::Map<Eigen::VectorXd>(AA2J.data(), PD*PD) * JInII * K_factor_j;
                     }
+                    //std::cout<<pt.K2<<std::endl;
                 }
             }
         }
@@ -299,6 +337,7 @@ void calculate_rk(std::vector<Points>& point_list, double C1, double C2, double 
         pt.residual = pt.R1 + pt.R2;
         pt.stiffness = pt.K1 + pt.K2;
 
+        //std::cout << "Point: "<<pt.Nr<<" Flag: "<<pt.Flag << " DOF: "<<pt.DOF<<" BCflag: "<<pt.BCflag<< " BCval: "<<pt.BCval <<std::endl<<"R1: "<<std::endl<<pt.R1.transpose()<<std::endl<<"R2: "<<std::endl<<pt.R2.transpose()<<std::endl;
         // Numerical stability check
         if (!pt.residual.allFinite() || !pt.stiffness.allFinite()) {
             std::cerr << "NaN/Inf detected in point " << pt.Nr << std::endl;
@@ -314,7 +353,7 @@ void assembly(const int PD, const std::vector<Points>& point_list, int DOFs, Eig
         R = Eigen::VectorXd::Zero(DOFs);
         for (const auto& point : point_list) {
             for (int d = 0; d < PD; d++) {
-                if (point.BCflag(d) == 0 && point.DOF(d) > 0 && point.DOF(d) <= DOFs) {
+                if (point.BCflag(d) == 1 && point.DOF(d) > 0 && point.DOF(d) <= DOFs) {
                     const int index = point.DOF(d) - 1;
                     R(index) += point.residual(d);
                 }
@@ -343,12 +382,12 @@ void assembly(const int PD, const std::vector<Points>& point_list, int DOFs, Eig
 
                 // Add contributions to global matrix
                 for (int i = 0; i < PD; i++) {
-                    if (pt.BCflag(i) == 0 || pt.DOF(i) >= 0) continue;
+                    if (pt.BCflag(i) != 1 || pt.DOF(i) <= 0) continue;
                     const int row = pt.DOF(i) - 1;
 
                     const auto& nbr_pt = point_list[q];
                     for (int j = 0; j < PD; j++) {
-                        if (nbr_pt.BCflag(j) == 0 && nbr_pt.DOF(j) > 0) {
+                        if (nbr_pt.BCflag(j) == 1 && nbr_pt.DOF(j) > 0) {
                             const int col_idx = nbr_pt.DOF(j) - 1;
                             if (std::isfinite(K_block(i,j))) {
                                 triplets.emplace_back(row, col_idx, K_block(i,j));
@@ -374,10 +413,11 @@ void assembly(const int PD, const std::vector<Points>& point_list, int DOFs, Eig
                     if (q >= 0 && q < point_list.size()) {
                         const auto& nbr_q = point_list[q];
                         for (int i = 0; i < PD; i++) {
-                            if (pt.BCflag(i) == 0 || pt.DOF(i) >= 0) continue;
+                            if (pt.BCflag(i) != 1 || pt.DOF(i) <= 0) continue;
+                            
                             const int row = pt.DOF(i) - 1;
                             for (int j = 0; j < PD; j++) {
-                                if (nbr_q.BCflag(j) == 0 && nbr_q.DOF(j) > 0) {
+                                if (nbr_q.BCflag(j) == 1 && nbr_q.DOF(j) > 0) {
                                     const int col = nbr_q.DOF(j) - 1;
                                     if (std::isfinite(K_block_q(i,j))) {
                                         triplets.emplace_back(row, col, K_block_q(i,j));
@@ -395,10 +435,11 @@ void assembly(const int PD, const std::vector<Points>& point_list, int DOFs, Eig
                     if (r >= 0 && r < point_list.size()) {
                         const auto& nbr_r = point_list[r];
                         for (int i = 0; i < PD; i++) {
-                            if (pt.BCflag(i) == 0 || pt.DOF(i) >= 0) continue;
+                            if (pt.BCflag(i) != 1 || pt.DOF(i) <= 0) continue;
+                            
                             const int row = pt.DOF(i) - 1;
                             for (int j = 0; j < PD; j++) {
-                                if (nbr_r.BCflag(j) == 0 && nbr_r.DOF(j) > 0) {
+                                if (nbr_r.BCflag(j) == 1 && nbr_r.DOF(j) > 0) {
                                     const int col = nbr_r.DOF(j) - 1;
                                     if (std::isfinite(K_block_r(i,j))) {
                                         triplets.emplace_back(row, col, K_block_r(i,j));
@@ -413,35 +454,40 @@ void assembly(const int PD, const std::vector<Points>& point_list, int DOFs, Eig
 
         K.resize(DOFs, DOFs);
         K.setFromTriplets(triplets.begin(), triplets.end());
-        K.makeCompressed();
+        std::cout<<"assembled K : "<<std::endl<<K<<std::endl;
+        //K.makeCompressed();
     }
 }
 
-void update_points(const int PD, std::vector<Points>& point_list, double LF, Eigen::VectorXd& dx, const std::string& Update_flag, double delta, int DOFs)
+void update_points(const int PD, std::vector<Points>& point_list, double LF, Eigen::VectorXd& dx, const std::string& Update_flag, double Delta, int DOFs)
 {
     if (Update_flag == "Prescribed") {
         for (auto& i : point_list) {
             for (int p = 0; p < PD; p++) {
-                if (i.BCflag(p) == 1) {
-                    i.x(p) = i.X(p) + (LF * i.BCval(p));
-                    //std::cout << "Updated prescribed point " << i.Nr << " coord " << p << " to " << i.x[p] << std::endl;
+                // Fixed: Apply to Dirichlet nodes
+                if (i.Flag == "RightPatch") {
+                    i.x = i.X + (LF * i.BCval);
                 }
             }
+            if (i.Flag == "RightPatch") {
+            std::cout << "RightPatch " << i.Nr << ": X = " << i.X.transpose()
+                      << ", x = " << i.x.transpose() << ", BCval = " << i.BCval.transpose() << std::endl;
+            }
         }
-    }
+    } 
     else if (Update_flag == "Displacement") {
         for (auto& i : point_list) {
             for (int q = 0; q < PD; q++) {
-                if (i.BCflag(q) == 0 && i.DOF(q) > 0 && i.DOF(q) <= DOFs) {
-                    i.x(q) += dx(i.DOF(q) - 1);
-                    //std::cout << "Updated point " << i.Nr << " coord " << q << " by " << dx[i.DOF[q] - 1] << std::endl;
+                // Fixed: Update only Neumann nodes
+                if (i.BCflag(q) == 1 && i.DOF(q) > 0 && i.DOF(q) <= DOFs) {
+                    i.x[q] += dx[(i.DOF(q) - 1)];
                 }
             }
         }
     }
-
-    // Update neighbor coordinates
-    for (auto& point : point_list) {
+    // Update neighbor coordinates (unchanged)
+    for (auto& point : point_list) 
+    {
         for (size_t i = 0; i < point.NI.size(); i++) {
             int nbr_idx = point.NI[i];
             if (nbr_idx >= 0 && nbr_idx < point_list.size()) {
@@ -453,9 +499,10 @@ void update_points(const int PD, std::vector<Points>& point_list, double LF, Eig
             int idx1 = point.NInII[i].first;
             int idx2 = point.NInII[i].second;
             if (idx1 >= 0 && idx1 < point_list.size() && idx2 >= 0 && idx2 < point_list.size()) {
-                point.neighbours2x[i] = std::make_pair( point_list[idx1].x, point_list[idx2].x);
+                point.neighbours2x[i] = std::make_pair(point_list[idx1].x, point_list[idx2].x);
             }
         }
     }
-    neighbour_list(point_list, delta);
+
+    //neighbour_list(point_list, Delta);
 }

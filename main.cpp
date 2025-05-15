@@ -79,7 +79,7 @@ int main() {
     int number_of_right_patches = 1;
     double C1 = 1.0;
     double C2 = 1.0;
-    std::string DEFflag = "SHR";
+    std::string DEFflag = "EXP";
     int DOFs = 0;
     int DOCs = 0;
 
@@ -91,40 +91,41 @@ int main() {
     // Debugging the points and their neighbours
 
     for (const auto& i : points) {
-        //std::cout << "Nr: " << i.Nr << std::endl;
-        //std::cout << "X: [ " << i.X.transpose() << " ]" << std::endl;
-        //std::cout << "x: [ " << i.x.transpose() << " ]" << std::endl;
-        //std::cout << "Volume: " << i.volume << std::endl;
-        //std::cout << "BC: [ " << i.BCflag.transpose() << " ]" << std::endl << "Flag: " << i.Flag << std::endl;
-        //std::cout << "1-Neighbours of " << i.Nr << " are: [";
-        //for (const auto& n : i.NI)
-        //{
-        //    std::cout << "{ " << n << " " << "} ";
-        //}
-        //std::cout << "]";
-        //std::cout << "\nNumber of 1-neighbour interactions for point " << i.Nr << ": " << i.n1 << std::endl;
-        //std::cout << "2-Neighbours of " << i.Nr << " are: [";
-        //for (const auto& p : i.NInII)
-        //{
-        //    std::cout << "{ " << p.first << ", " << p.second << " } ";
-        //}
-        //std::cout << std::endl;
-        //std::cout << "]";
-        //std::cout << "\nNumber of 2-neighbour interactions for point " << i.Nr << ": " << i.n2 << std::endl;
-      //  std::cout << std::endl;
-    //    std::cout << std::endl;
+        std::cout << "Nr: " << i.Nr << std::endl;
+        /*std::cout << "X: [ " << i.X.transpose() << " ]" << std::endl;
+        std::cout << "x: [ " << i.x.transpose() << " ]" << std::endl;
+        std::cout << "Volume: " << i.volume << std::endl;*/
+        std::cout << "BC: [ " << i.BCflag.transpose() << " ]" << std::endl << "Flag: " << i.Flag << std::endl;
+        std::cout << "BC: [ " << i.BCval.transpose() << " ]" << std::endl;
+        /*std::cout << "1-Neighbours of " << i.Nr << " are: [";
+        for (const auto& n : i.NI)
+        {
+            std::cout << "{ " << n << " " << "} ";
+        }
+        std::cout << "]";
+        std::cout << "\nNumber of 1-neighbour interactions for point " << i.Nr << ": " << i.n1 << std::endl;
+        std::cout << "2-Neighbours of " << i.Nr << " are: [";
+        for (const auto& p : i.NInII)
+        {
+            std::cout << "{ " << p.first << ", " << p.second << " } ";
+        }
+        std::cout << std::endl;
+        std::cout << "]";
+        std::cout << "\nNumber of 2-neighbour interactions for point " << i.Nr << ": " << i.n2 << std::endl;
+        std::cout << std::endl;*/
+        std::cout << std::endl;
     }
     
 
 
     // Write initial mesh to VTK
-    write_vtk_2d(points, "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/initial.vtk");
+    //write_vtk_2d(points, "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/initial.vtk");
 
     // Newton-Raphson setup
     int steps = 1;
     double load_step = (1.0 / steps);
     double tol = 1e-6;
-    int max_try = 2;
+    int max_try = 1;
     double LF = 0.0;
 
     std::cout << "======================================================" << std::endl;
@@ -161,6 +162,7 @@ int main() {
             std::cout<<"going into assemble for assembling global R "<<std::endl;
             assembly(PD,points, DOFs, R, K, "residual");
             std::cout<<"coming out of assemble after assembling global R "<<std::endl;
+            std::cout<<"Residual: "<< std::endl << R.transpose() << std::endl;
 
             double residual_norm = R.norm();
             double rel_norm = 0.0;
@@ -180,9 +182,11 @@ int main() {
             std::cout<<"going into assemble for assembling global K "<<std::endl;
             assembly(PD,points, DOFs, R, K, "stiffness");
             std::cout<<"coming out of assemble after assembling global K "<<std::endl;
+            std::cout<<"Stiffness: "<< std::endl << K << std::endl;
 
             Eigen::FullPivLU<Eigen::MatrixXd> solver(K);
             dx += solver.solve(-R);
+            std::cout<<"dx: "<< std::endl << dx.transpose() << std::endl;
 
             update_points(PD, points, LF, dx, "Displacement",delta, DOFs);
             error_counter++;
@@ -190,18 +194,18 @@ int main() {
         }
         std::ostringstream load_filename;
         load_filename << "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/load_" << std::fixed << std::setprecision(2) << LF << ".vtk";
-        write_vtk_2d(points, load_filename.str());
+        //write_vtk_2d(points, load_filename.str());
 
         LF += load_step;
 
         // Output current state
         for (const auto& p : points) {
-            std::cout << "Point " << p.Nr << ": x = " << p.x.transpose() << ", displacement = " << (p.x[0] - p.X[0]) << std::endl;
+            //std::cout << "Point " << p.Nr << ": x = " << p.x.transpose() << ", displacement = " << (p.x[0] - p.X[0]) << std::endl;
         }
         //std::cout<<std::endl;
     }
 
-    write_vtk_2d(points, "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/final.vtk");
+    //write_vtk_2d(points, "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/final.vtk");
 
     return 0;
 }
