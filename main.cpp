@@ -186,7 +186,7 @@ int main() {
 
             Eigen::FullPivLU<Eigen::MatrixXd> solver(K);
             dx += solver.solve(-R);
-            std::cout<<"dx: "<< std::endl << dx.transpose() << std::endl;
+            std::cout<<"dx: "<< dx.size()<< std::endl << dx.transpose() << std::endl;
 
             update_points(PD, points, LF, dx, "Displacement",delta, DOFs);
             error_counter++;
