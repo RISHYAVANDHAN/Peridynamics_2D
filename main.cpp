@@ -10,58 +10,12 @@
 #include <algorithm>
 #include "Points.h"
 
-
-void write_vtk_2d(const std::vector<Points>& point_list, const std::string& filename) {
-    std::ofstream vtk_file(filename);
-    if (!vtk_file.is_open()) {
-        std::cerr << "Failed to open VTK file for writing: " << filename << std::endl;
-        return;
-    }
-
-    vtk_file << "# vtk DataFile Version 4.2\n";
-    vtk_file << "2D Peridynamics Output\n";
-    vtk_file << "ASCII\n";
-    vtk_file << "DATASET POLYDATA\n";
-    vtk_file << "POINTS " << point_list.size() << " float\n";
-
-    // Write 2D points (x, y, 0.0)
-    for (const auto& point : point_list) {
-        vtk_file << std::fixed << std::setprecision(6)
-                 << point.x[0] << " "   // X-coordinate
-                 << point.x[1] << " "   // Y-coordinate
-                 << "0.0\n";            // Z=0 for 2D
-    }
-
-    // Define vertices
-    vtk_file << "VERTICES " << point_list.size() << " " << point_list.size() * 2 << "\n";
-    for (size_t i = 0; i < point_list.size(); i++) {
-        vtk_file << "1 " << i << "\n";
-    }
-
-    // Point data section
-    vtk_file << "POINT_DATA " << point_list.size() << "\n";
-
-    // First: BC flags as integer data
-    vtk_file << "SCALARS BC_flag int 1\n";
-    vtk_file << "LOOKUP_TABLE bc_table\n";
-    for (const auto& point : point_list) {
-        vtk_file << point.BCflag << "\n";
-    }
-
-    // Second: Direct RGB color specification
-    vtk_file << "SCALARS Color unsigned_char 3\n";
-    vtk_file << "LOOKUP_TABLE color_table 2\n";  // 2 entries in table
-    vtk_file << "255 0 0\n";  // Red for entry 0
-    vtk_file << "0 0 255\n";  // Blue for entry 1
-
-    // Map colors based on BCflag
-    for (const auto& point : point_list) {
-        vtk_file << (point.BCflag(0) == 1 ? "0 " : "1 "); // Index into color table
-    }
-
-    vtk_file.close();
-    std::cout << "VTK file written to " << filename << std::endl;
-}
+/*
+Coversation column - Update discussion
+current issue:
+for C2 < C1, the code is smooth, its converign in 7 / 3 iteration depending on the order of differnece between C1 and C2.ADJ_OFFSET_SINGLESHOTbot 
+if C2 >= C1, the code is not converging, moreover its blowing up so much the values are becoming nan/inf.
+*/
 
 // --- Main Function ---
 int main() {
@@ -117,10 +71,6 @@ int main() {
     }
 */
     
-
-    // Write initial mesh to VTK
-    //write_vtk_2d(points, "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/initial.vtk");
-
     // Newton-Raphson setup
     double steps = 10.0;
     double load_step = (1.0 / steps);
@@ -206,9 +156,6 @@ int main() {
             error_counter++;
             std::cout<<std::endl;
         }
-        std::ostringstream load_filename;
-        load_filename << "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/load_" << std::fixed << std::setprecision(2) << LF << ".vtk";
-        //write_vtk_2d(points, load_filename.str());
 
         LF += load_step;
 
@@ -219,9 +166,5 @@ int main() {
         //std::cout<<std::endl;
     }
         
-        
-
-    //write_vtk_2d(points, "C:/Users/srini/Downloads/FAU/Semwise Course/Programming Project/peridynamics 2D vtk/final.vtk");
-
     return 0;
 }
