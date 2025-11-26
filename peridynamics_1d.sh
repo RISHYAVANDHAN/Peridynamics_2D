@@ -41,7 +41,7 @@ for N in "${Points[@]}"; do
           rpatches=50
         fi
       
-        ./build/Peridynamics_1D \
+        ./build/Peridynamics_2D \
           --domain $Domain \
           --delta $H \
           --spacing $N \
