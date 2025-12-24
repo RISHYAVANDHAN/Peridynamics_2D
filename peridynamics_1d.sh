@@ -13,7 +13,7 @@ Force=10.0
 Points=(1)
 Prescribed=("Force")
 Horizon=(1 2 3 4 5 6 7 8 9 10)
-NN=(0.25 1.0 2.0 4.0)
+NN=(2.0 4.0)
 
 echo "[INFO] Building project..."
 mkdir -p build

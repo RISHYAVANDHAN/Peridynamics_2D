@@ -10,9 +10,9 @@ include_directories(eigen)
 # Fix paths to source files
 add_executable(Peridynamics_2D
     2D/hyperdual.h
-    2D/main.cpp
-    2D/Points.cpp
-    2D/Points.h
+    2D/main_2d.cpp
+    2D/Points_2d.cpp
+    2D/Points_2d.h
     2D/cli.h
     2D/cli.cpp
     2D/logger.h
