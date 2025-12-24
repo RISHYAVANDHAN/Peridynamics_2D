@@ -1,0 +1,72 @@
+
+======================================================
+
+number of DOFs                  : 798
+
+number of POINTs                : 603
+
+======================================================
+
+Load factor : 0
+Residual Norm @ Increment 0 @ Iteration 1 : 00    ,    normalized : 1
+Residual Norm @ Increment 0 @ Iteration 2 : 00    ,    normalized : NaN
+
+Load factor : 0.1
+Residual Norm @ Increment 1 @ Iteration 1 : 7.38e-03    ,    normalized : 1
+Residual Norm @ Increment 1 @ Iteration 2 : 1.15e-04    ,    normalized : 1.56e-02
+Residual Norm @ Increment 1 @ Iteration 3 : 2.56e-08    ,    normalized : 3.47e-06
+Residual Norm @ Increment 1 @ Iteration 4 : 1.53e-15    ,    normalized : 2.07e-13
+
+Load factor : 0.2
+Residual Norm @ Increment 2 @ Iteration 1 : 7.42e-03    ,    normalized : 1
+Residual Norm @ Increment 2 @ Iteration 2 : 1.14e-04    ,    normalized : 1.54e-02
+Residual Norm @ Increment 2 @ Iteration 3 : 2.44e-08    ,    normalized : 3.29e-06
+Residual Norm @ Increment 2 @ Iteration 4 : 1.37e-15    ,    normalized : 1.85e-13
+
+Load factor : 0.3
+Residual Norm @ Increment 3 @ Iteration 1 : 7.46e-03    ,    normalized : 1
+Residual Norm @ Increment 3 @ Iteration 2 : 1.13e-04    ,    normalized : 1.51e-02
+Residual Norm @ Increment 3 @ Iteration 3 : 2.33e-08    ,    normalized : 3.13e-06
+Residual Norm @ Increment 3 @ Iteration 4 : 1.23e-15    ,    normalized : 1.64e-13
+
+Load factor : 0.4
+Residual Norm @ Increment 4 @ Iteration 1 : 7.49e-03    ,    normalized : 1
+Residual Norm @ Increment 4 @ Iteration 2 : 1.11e-04    ,    normalized : 1.48e-02
+Residual Norm @ Increment 4 @ Iteration 3 : 2.23e-08    ,    normalized : 2.97e-06
+Residual Norm @ Increment 4 @ Iteration 4 : 1.11e-15    ,    normalized : 1.48e-13
+
+Load factor : 0.5
+Residual Norm @ Increment 5 @ Iteration 1 : 7.53e-03    ,    normalized : 1
+Residual Norm @ Increment 5 @ Iteration 2 : 1.10e-04    ,    normalized : 1.46e-02
+Residual Norm @ Increment 5 @ Iteration 3 : 2.12e-08    ,    normalized : 2.82e-06
+Residual Norm @ Increment 5 @ Iteration 4 : 9.98e-16    ,    normalized : 1.33e-13
+
+Load factor : 0.6
+Residual Norm @ Increment 6 @ Iteration 1 : 7.56e-03    ,    normalized : 1
+Residual Norm @ Increment 6 @ Iteration 2 : 1.08e-04    ,    normalized : 1.43e-02
+Residual Norm @ Increment 6 @ Iteration 3 : 2.03e-08    ,    normalized : 2.68e-06
+Residual Norm @ Increment 6 @ Iteration 4 : 8.97e-16    ,    normalized : 1.19e-13
+
+Load factor : 0.7
+Residual Norm @ Increment 7 @ Iteration 1 : 7.59e-03    ,    normalized : 1
+Residual Norm @ Increment 7 @ Iteration 2 : 1.07e-04    ,    normalized : 1.41e-02
+Residual Norm @ Increment 7 @ Iteration 3 : 1.94e-08    ,    normalized : 2.55e-06
+Residual Norm @ Increment 7 @ Iteration 4 : 8.15e-16    ,    normalized : 1.07e-13
+
+Load factor : 0.8
+Residual Norm @ Increment 8 @ Iteration 1 : 7.63e-03    ,    normalized : 1
+Residual Norm @ Increment 8 @ Iteration 2 : 1.06e-04    ,    normalized : 1.39e-02
+Residual Norm @ Increment 8 @ Iteration 3 : 1.85e-08    ,    normalized : 2.42e-06
+Residual Norm @ Increment 8 @ Iteration 4 : 6.95e-16    ,    normalized : 9.11e-14
+
+Load factor : 0.9
+Residual Norm @ Increment 9 @ Iteration 1 : 7.66e-03    ,    normalized : 1
+Residual Norm @ Increment 9 @ Iteration 2 : 1.05e-04    ,    normalized : 1.36e-02
+Residual Norm @ Increment 9 @ Iteration 3 : 1.77e-08    ,    normalized : 2.30e-06
+Residual Norm @ Increment 9 @ Iteration 4 : 6.51e-16    ,    normalized : 8.50e-14
+
+Load factor : 1
+Residual Norm @ Increment 10 @ Iteration 1 : 7.69e-03    ,    normalized : 1
+Residual Norm @ Increment 10 @ Iteration 2 : 1.03e-04    ,    normalized : 1.34e-02
+Residual Norm @ Increment 10 @ Iteration 3 : 1.69e-08    ,    normalized : 2.19e-06
+Residual Norm @ Increment 10 @ Iteration 4 : 5.86e-16    ,    normalized : 7.62e-14
