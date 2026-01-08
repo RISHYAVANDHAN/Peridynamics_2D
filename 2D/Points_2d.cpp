@@ -1,6 +1,10 @@
 // Points.cpp
-
+#include <set>
+#include <iomanip>
 #include <vector>
+#ifdef _OPENMP
+  #include <omp.h>
+#endif
 #include <cmath>
 #include <cstdlib>
 #include <algorithm>
@@ -8,7 +12,7 @@
 #include <iostream>
 #include <Eigen/Sparse>
 #include "hyperdual.h"
-#include "Points.h"
+#include "Points_2d.h"
 
 // ============================================================================
 // COMPUTE CORNERS: Generate corner points for 2D and 3D domains
@@ -257,6 +261,9 @@ Topology(int PD, const std::vector<Eigen::Vector3d>& NL, const std::vector<std::
             Point newPoint(NoP, NL[n]); // Create point with initial position
             newPoint.NNr = n;           // Store original node index
             newPoint.PD = PD;           // Set problem dimension
+            newPoint.F_ext = Eigen::VectorXd::Zero(PD);    // Set size to 2 or 3 and zero it
+            newPoint.residual = Eigen::VectorXd::Zero(PD); // Set size to 2 or 3 and zero it
+            // -----------------------
             PL.emplace_back(newPoint);
             NPL[n] = NoP;               // Map node index to point index
         }
@@ -542,7 +549,7 @@ std::vector<Point> AssignNgbrs(int PD, std::vector<Point> PL, double L, double D
         for (int i = -Del_by_L; i <= Del_by_L; i++) {
             for (int j = -Del_by_L; j <= Del_by_L; j++) {
                 if ((sqrt(i*i + j*j) * L < Delta) && (i != 0 || j != 0)) {
-                    NmaxNgbr = NmaxNgbr + 1;
+                    NmaxNgbr++;
                 }
             }
         }
@@ -590,7 +597,7 @@ std::vector<Point> AssignNgbrs(int PD, std::vector<Point> PL, double L, double D
                         Eigen::Vector3d A = XiI.cross(XiII); // Cross product (area)
                         // Check if vectors are non-colinear and within horizon
                         if (A.norm() > tol && (XiI - XiII).norm() < Delta) {
-                            NInII = NInII + 1;
+                            NInII++;
                         }
                     }
                 }
@@ -1050,23 +1057,29 @@ std::vector<Point> FreeAllPoints(std::vector<Point> PL) {
 std::pair<std::vector<Point>, int> AssignGlobalDOF(std::vector<Point> PL) {
     int NoPs = PL.size();
     int PD = PL[0].PD;
-    int DOFs = 0; // Total number of free degrees of freedom
-
+    int total_DOFs = 0;
+    
+    std::cout << "\n=== AssignGlobalDOF DEBUG (Corrected) ===" << std::endl;
+    
     for (int i = 0; i < NoPs; i++) {
-        std::vector<int> BCflg = PL[i].BCflg; // BC flags for each DOF
-        std::vector<int> DOF(PD, 0); // Global DOF numbers (0 = constrained)
-        
+        std::vector<int> DOF(PD, 0); // Initialize with 0
         for (int p = 0; p < PD; p++) {
-            if (BCflg[p] == 1) { // Free DOF
-                DOFs = DOFs + 1;
-                DOF[p] = DOFs; // Assign next available DOF number
+            // ONLY assign a global index if the point is free to move
+            if (PL[i].BCflg[p] == 1) {
+                total_DOFs++;
+                DOF[p] = total_DOFs;
+            } else {
+                // Fixed directions get index 0 (or -1), meaning "no DOF"
+                DOF[p] = 0; 
             }
         }
-        
-        PL[i].DOF = DOF; // Store DOF numbers for this point
+        PL[i].DOF = DOF;
     }
     
-    return {PL, DOFs};
+    std::cout << "Free DOFs assigned: " << total_DOFs << std::endl;
+    std::cout << "Total Points: " << NoPs << std::endl;
+    
+    return {PL, total_DOFs};
 }
 
 // ============================================================================
@@ -1345,6 +1358,13 @@ Eigen::VectorXd PP2(const Eigen::VectorXd& XiI, const Eigen::VectorXd& XiII,
                     const Eigen::VectorXd& xiI, const Eigen::VectorXd& xiII,
                     double C2, double Delta, int PD) {
     Eigen::VectorXd out = Eigen::VectorXd::Zero(PD);
+    // std::cout << "\n=== DEBUG PP2 ===" << std::endl;
+    // std::cout << "XiI: " << XiI.transpose() << std::endl;
+    // std::cout << "XiII: " << XiII.transpose() << std::endl;
+    // std::cout << "xiI: " << xiI.transpose() << std::endl;
+    // std::cout << "xiII: " << xiII.transpose() << std::endl;
+    
+    double norm_A = 0.0, norm_a = 0.0;
     double tol = 1e-8;
     
     double A = 0.0, a = 0.0;
@@ -1354,8 +1374,17 @@ Eigen::VectorXd PP2(const Eigen::VectorXd& XiI, const Eigen::VectorXd& XiII,
         Eigen::Vector2d XiII_2d = XiII.head<2>();
         Eigen::Vector2d xiI_2d = xiI.head<2>();
         Eigen::Vector2d xiII_2d = xiII.head<2>();
-        A = std::abs(cross_2d(XiI_2d, XiII_2d));
-        a = std::abs(cross_2d(xiI_2d, xiII_2d));
+        double cross_X = cross_2d(XiI_2d, XiII_2d);
+        double cross_x = cross_2d(xiI_2d, xiII_2d);
+        
+        // std::cout << "2D cross(XiI, XiII) = " << cross_X << std::endl;
+        // std::cout << "2D cross(xiI, xiII) = " << cross_x << std::endl;
+        
+        A = std::abs(cross_X);
+        a = std::abs(cross_x);
+
+        // std::cout << "A = |cross| = " << A << std::endl;
+        // std::cout << "a = |cross| = " << a << std::endl;
     } else if (PD == 3) {
         Eigen::Vector3d XiI_3d = XiI.head<3>();
         Eigen::Vector3d XiII_3d = XiII.head<3>();
@@ -1364,11 +1393,22 @@ Eigen::VectorXd PP2(const Eigen::VectorXd& XiI, const Eigen::VectorXd& XiII,
         A = cross_3d(XiI_3d, XiII_3d).norm();
         a = cross_3d(xiI_3d, xiII_3d).norm();
     }
+
+    // std::cout << "A > tol? " << (A > tol) << " (A=" << A << ", tol=" << tol << ")" << std::endl;
+    // std::cout << "norm(XiI-XiII) = " << (XiI - XiII).norm() << std::endl;
+    // std::cout << "norm(XiI-XiII) < Delta? " << ((XiI - XiII).norm() < Delta) 
+    //           << " (Delta=" << Delta << ")" << std::endl;
     
     if (A > tol && (XiI - XiII).norm() < Delta) {
+        // std::cout << "ENTERING PP2 CALCULATION!" << std::endl;
+        // std::cout << "G = 1/A - 1/a = " << (1.0/A) << " - " << (1.0/a) << std::endl;
         double G = (1.0 / A) - (1.0 / a);
         Eigen::VectorXd H = (xiII.dot(xiII) * xiI) - (xiII.dot(xiI) * xiII);
         out = 2.0 * C2 * G * H;
+
+    }
+    else{
+        out = Eigen::VectorXd::Zero(PD); // Return zero force if collinear
     }
     
     return out;
@@ -1386,9 +1426,20 @@ Eigen::Vector3d PP3(const Eigen::Vector3d& XiI, const Eigen::Vector3d& XiII, con
     double V = XiI.dot(cross_3d(XiII, XiIII));
     double v = xiI.dot(cross_3d(xiII, xiIII));
     
-    if (std::abs(V) > tol && (XiI - XiII).norm() < Delta && 
-        (XiI - XiIII).norm() < Delta && (XiII - XiIII).norm() < Delta) {
-        out = 3.0 * C3 * cross_3d(xiII, xiIII) * (1.0 / std::abs(V) - 1.0 / std::abs(v)) * v;
+    if (std::abs(V) > tol && std::abs(v) > tol && 
+        (XiI - XiII).norm() < Delta && 
+        (XiI - XiIII).norm() < Delta && 
+        (XiII - XiIII).norm() < Delta) {
+        
+        // FIXED: Use consistent formula
+        double factor = 3.0 * C3 * (1.0 / std::abs(V) - 1.0 / std::abs(v)) * v;
+        out = factor * cross_3d(xiII, xiIII);
+        
+        // Debug NaN check
+        if (std::isnan(out.norm())) {
+            std::cout << "PP3 NaN: V=" << V << ", v=" << v 
+                      << ", factor=" << factor << ", C3=" << C3 << std::endl;
+        }
     }
     
     return out;
@@ -1418,37 +1469,36 @@ std::pair<Eigen::MatrixXd, Eigen::MatrixXd> AA2(const Eigen::VectorXd& XiI, cons
                                                   double C2, double Delta, int PD) {
     Eigen::MatrixXd outI = Eigen::MatrixXd::Zero(PD, PD);
     Eigen::MatrixXd outJ = Eigen::MatrixXd::Zero(PD, PD);
-    double tol = 1e-8;
+    double tol = 1e-12; // Tighter tolerance
     
-    double A = 0.0, a = 0.0;
+    // 1. Calculate Cross Products
+    // In 2D, these are scalars representing the Z-component of the vector cross product
+    double A = cross_2d(XiI.head<2>(), XiII.head<2>());
+    double a = cross_2d(xiI.head<2>(), xiII.head<2>());
     
-    if (PD == 2) {
-        Eigen::Vector2d XiI_2d = XiI.head<2>();
-        Eigen::Vector2d XiII_2d = XiII.head<2>();
-        Eigen::Vector2d xiI_2d = xiI.head<2>();
-        Eigen::Vector2d xiII_2d = xiII.head<2>();
-        A = std::abs(cross_2d(XiI_2d, XiII_2d));
-        a = std::abs(cross_2d(xiI_2d, xiII_2d));
-    } else if (PD == 3) {
-        Eigen::Vector3d XiI_3d = XiI.head<3>();
-        Eigen::Vector3d XiII_3d = XiII.head<3>();
-        Eigen::Vector3d xiI_3d = xiI.head<3>();
-        Eigen::Vector3d xiII_3d = xiII.head<3>();
-        A = cross_3d(XiI_3d, XiII_3d).norm();
-        a = cross_3d(xiI_3d, xiII_3d).norm();
-    }
-    
-    if (A > tol && (XiI - XiII).norm() < Delta) {
+    double abs_A = std::abs(A);
+    double abs_a = std::abs(a);
+
+    // 2. Geometry Check (Mirror MATLAB AA > tol)
+    if (abs_A > tol && (XiI - XiII).norm() < Delta) {
         Eigen::MatrixXd II = Eigen::MatrixXd::Identity(PD, PD);
         
+        // 3. Construct helper matrices (Directly matching MATLAB BBI1, BBJ1)
         Eigen::MatrixXd BBI1 = (xiII.dot(xiII) * II) - (xiII * xiII.transpose());
         Eigen::MatrixXd BBJ1 = (2.0 * xiI * xiII.transpose()) - (xiI.dot(xiII) * II) - (xiII * xiI.transpose());
         
+        // 4. Construct e-vectors
         Eigen::VectorXd eInII = (xiII.dot(xiII) * xiI) - (xiI.dot(xiII) * xiII);
         Eigen::VectorXd eIInI = (xiI.dot(xiI) * xiII) - (xiII.dot(xiI) * xiI);
         
-        outI = 2.0 * C2 * ((1.0 / A) - (1.0 / a)) * BBI1 + (2.0 * C2 / std::pow(a, 3)) * (eInII * eInII.transpose());
-        outJ = 2.0 * C2 * ((1.0 / A) - (1.0 / a)) * BBJ1 + (2.0 * C2 / std::pow(a, 3)) * (eInII * eIInI.transpose());
+        // 5. Final Assembly (CHECK SIGNS)
+        // MATLAB: outI = 2 * CC * (1/AA - 1/aa) * BBI1 + 2 * CC * 1/(aa^3) * (eInII * eInII')
+        // NOTE: Use AA and aa (the norms) as in your MATLAB code
+        double term1_factor = 2.0 * C2 * (1.0 / abs_A - 1.0 / abs_a);
+        double term2_factor = 2.0 * C2 / std::pow(abs_a, 3.0);
+
+        outI = term1_factor * BBI1 + term2_factor * (eInII * eInII.transpose());
+        outJ = term1_factor * BBJ1 + term2_factor * (eInII * eIInI.transpose());
     }
     
     return {outI, outJ};
@@ -1503,341 +1553,278 @@ std::tuple<Eigen::Matrix3d, Eigen::Matrix3d, Eigen::Matrix3d> AA3(
     
     return {outI, outJ, outK};
 }
-
 // ============================================================================
 // CALCULATE_RK: Calculate residual and stiffness for all points
 // Direct conversion from MATLAB compute_residual and compute_stiffness
 // ============================================================================
-void calculate_rk(std::vector<Point>& PL, double C1, double C2, double Delta, int PD) {
-    double tol = 1e-8;
-    double C3 = 0.0; // Get from MatPars if needed
-    
-    for (auto& point : PL) {
-        // Get point data
-        int Nr = point.Nr;
-        int NI = point.NI;
-        int NInII = point.NInII;
-        int NInIInIII = point.NInIInIII;
-        double AV = point.AV;
-        Eigen::Vector3d X = point.X;
-        Eigen::Vector3d x = point.x;
-        const std::vector<int>& neighbors = point.neighbors;
-        const std::vector<Eigen::Vector3d>& neighborsX = point.neighborsX_vec;
-        const std::vector<Eigen::Vector3d>& neighborsx = point.neighborsx_vec;
-        double L = point.L;
-        
-        // Get C3 from MatPars if available
-        if (point.MatPars.size() > 2) {
-            C3 = point.MatPars[2];
-        }
-        
-        int NNgbr = neighbors.size();
-        
-        // Calculate weighting factors based on PD
+
+void calculate_rk(std::vector<Point>& PL, double C1, double C2, double Delta, int PD)
+{
+    // 1. Global iteration tracker (increments every time Newton-Raphson calls this)
+    static int global_iter_count = 0;
+    const double tol = 1e-8;
+    (void)tol; // if unused for now
+
+    // Parallelize over points (safe: each point writes only to itself)
+    #pragma omp parallel for if(_OPENMP)
+    for (int p = 0; p < static_cast<int>(PL.size()); ++p)
+    {
+        auto& point = PL[p];
+
+        // -------------------- Load point data --------------------
+        const int Nr = point.Nr;
+        const int NI = point.NI;
+        const int NInII = point.NInII;
+        const int NInIInIII = point.NInIInIII;
+
+        const double AV = point.AV;
+        const Eigen::Vector3d X = point.X;
+        const Eigen::Vector3d x = point.x;
+
+        const auto& neighbors   = point.neighbors;
+        const auto& neighborsX  = point.neighborsX_vec;
+        const auto& neighborsx  = point.neighborsx_vec;
+
+        // Material parameter C3
+        const double C3 = (point.MatPars.size() > 2) ? point.MatPars[2] : 0.0;
+
+        const int NNgbr = static_cast<int>(neighbors.size());
+
+        // -------------------- Weighting factors --------------------
         double JI = 0.0, JInII = 0.0, JInIInIII = 0.0;
-        
+
         if (PD == 2) {
-            double A = AV;
-            JI = A / NI;
-            JInII = (A * A) / NInII;
+            const double A = AV;
+            JI    = (NI    > 0) ? (A / NI) : 0.0;
+            JInII = (NInII > 0) ? ((A * A) / NInII) : 0.0;
         } else if (PD == 3) {
-            double V = AV;
-            JI = V / NI;
-            JInII = (V * V) / NInII;
-            JInIInIII = (V * V * V) / NInIInIII;
+            const double V = AV;
+            JI        = (NI          > 0) ? (V / NI) : 0.0;
+            JInII     = (NInII       > 0) ? ((V * V) / NInII) : 0.0;
+            JInIInIII = (NInIInIII   > 0) ? ((V * V * V) / NInIInIII) : 0.0;
+        } else {
+            // Unsupported PD
+            continue;
         }
-        
+
+        // -------------------- Precompute relative vectors Xi, xi --------------------
+        // Huge: avoid recomputing neighborsX[i]-X and neighborsx[i]-x in every loop.
+        std::vector<Eigen::Vector3d> Xi3(NNgbr), xi3(NNgbr);
+        for (int i = 0; i < NNgbr; ++i) {
+            Xi3[i] = neighborsX[i] - X;
+            xi3[i] = neighborsx[i] - x;
+        }
+
+        // Reusable buffers to avoid repeated dynamic allocations in tight loops
+        Eigen::VectorXd XiI(PD), xiI(PD), XiII(PD), xiII(PD);
+
         // ==================== ENERGY CALCULATION ====================
-        double psi = 0.0;
-        double psi1 = 0.0;
-        double psi2 = 0.0;
-        double psi3 = 0.0;
-        
+        double psi1 = 0.0, psi2 = 0.0, psi3 = 0.0;
+
         // 1-neighbor energy
         if (C1 != 0.0) {
-            for (int i = 0; i < NNgbr; i++) {
-                Eigen::VectorXd XiI(PD);
-                Eigen::VectorXd xiI(PD);
-                for (int d = 0; d < PD; d++) {
-                    XiI(d) = neighborsX[i](d) - X(d);
-                    xiI(d) = neighborsx[i](d) - x(d);
+            for (int i = 0; i < NNgbr; ++i) {
+                for (int d = 0; d < PD; ++d) {
+                    XiI(d) = Xi3[i](d);
+                    xiI(d) = xi3[i](d);
                 }
-                
-                double psi1tmp = JI * psifunc1(XiI, xiI, C1);
-                psi1 = psi1 + psi1tmp;
+                psi1 += JI * psifunc1(XiI, xiI, C1);
             }
         }
-        
+
         // 2-neighbor energy
         if (C2 != 0.0) {
-            for (int i = 0; i < NNgbr; i++) {
-                for (int j = 0; j < NNgbr; j++) {
-                    if (j != i) {
-                        Eigen::VectorXd XiI(PD), XiII(PD);
-                        Eigen::VectorXd xiI(PD), xiII(PD);
-                        for (int d = 0; d < PD; d++) {
-                            XiI(d) = neighborsX[i](d) - X(d);
-                            xiI(d) = neighborsx[i](d) - x(d);
-                            XiII(d) = neighborsX[j](d) - X(d);
-                            xiII(d) = neighborsx[j](d) - x(d);
-                        }
-                        
-                        double psi2tmp = JInII * psifunc2(XiI, XiII, xiI, xiII, C2, Delta, PD);
-                        psi2 = psi2 + psi2tmp;
+            for (int i = 0; i < NNgbr; ++i) {
+                for (int j = 0; j < NNgbr; ++j) {
+                    if (j == i) continue;
+
+                    for (int d = 0; d < PD; ++d) {
+                        XiI(d)  = Xi3[i](d);
+                        xiI(d)  = xi3[i](d);
+                        XiII(d) = Xi3[j](d);
+                        xiII(d) = xi3[j](d);
                     }
+                    psi2 += JInII * psifunc2(XiI, XiII, xiI, xiII, C2, Delta, PD);
                 }
             }
         }
-        
+
         // 3-neighbor energy (3D only)
         if (C3 != 0.0 && PD == 3) {
-            for (int i = 0; i < NNgbr; i++) {
-                for (int j = 0; j < NNgbr; j++) {
-                    if (j != i) {
-                        for (int k = 0; k < NNgbr; k++) {
-                            if ((k != i) && (k != j)) {
-                                Eigen::Vector3d XiI = neighborsX[i] - X;
-                                Eigen::Vector3d xiI = neighborsx[i] - x;
-                                Eigen::Vector3d XiII = neighborsX[j] - X;
-                                Eigen::Vector3d xiII = neighborsx[j] - x;
-                                Eigen::Vector3d XiIII = neighborsX[k] - X;
-                                Eigen::Vector3d xiIII = neighborsx[k] - x;
-                                
-                                double psi3tmp = JInIInIII * psifunc3(XiI, XiII, XiIII, xiI, xiII, xiIII, C3, Delta);
-                                psi3 = psi3 + psi3tmp;
-                            }
-                        }
+            for (int i = 0; i < NNgbr; ++i) {
+                for (int j = 0; j < NNgbr; ++j) {
+                    if (j == i) continue;
+                    for (int k = 0; k < NNgbr; ++k) {
+                        if (k == i || k == j) continue;
+
+                        psi3 += JInIInIII * psifunc3(Xi3[i], Xi3[j], Xi3[k],
+                                                     xi3[i], xi3[j], xi3[k],
+                                                     C3, Delta);
                     }
                 }
             }
         }
-        
-        psi = psi1 + psi2 + psi3;
-        point.psi = psi;
-        
+
+        point.psi = psi1 + psi2 + psi3;
+
         // ==================== RESIDUAL CALCULATION ====================
-        Eigen::Vector3d R = Eigen::Vector3d::Zero();
-        Eigen::Vector3d R1 = Eigen::Vector3d::Zero();
-        Eigen::Vector3d R2 = Eigen::Vector3d::Zero();
-        Eigen::Vector3d R3 = Eigen::Vector3d::Zero();
-        
+        Eigen::VectorXd R = Eigen::VectorXd::Zero(PD);
+
         // 1-neighbor residual
         if (C1 != 0.0) {
-            for (int i = 0; i < NNgbr; i++) {
-                Eigen::VectorXd XiI(PD);
-                Eigen::VectorXd xiI(PD);
-                for (int d = 0; d < PD; d++) {
-                    XiI(d) = neighborsX[i](d) - X(d);
-                    xiI(d) = neighborsx[i](d) - x(d);
+            for (int i = 0; i < NNgbr; ++i) {
+                for (int d = 0; d < PD; ++d) {
+                    XiI(d) = Xi3[i](d);
+                    xiI(d) = xi3[i](d);
                 }
-                
-                Eigen::VectorXd R1tmp_pd = JI * PP1(XiI, xiI, C1);
-                Eigen::Vector3d R1tmp = Eigen::Vector3d::Zero();
-                for (int d = 0; d < PD; d++) {
-                    R1tmp(d) = R1tmp_pd(d);
-                }
-                R1 = R1 + R1tmp;
+                R += JI * PP1(XiI, xiI, C1);
+
             }
         }
-        
+
         // 2-neighbor residual
         if (C2 != 0.0) {
-            for (int i = 0; i < NNgbr; i++) {
-                for (int j = 0; j < NNgbr; j++) {
-                    if (j != i) {
-                        Eigen::VectorXd XiI(PD), XiII(PD);
-                        Eigen::VectorXd xiI(PD), xiII(PD);
-                        for (int d = 0; d < PD; d++) {
-                            XiI(d) = neighborsX[i](d) - X(d);
-                            xiI(d) = neighborsx[i](d) - x(d);
-                            XiII(d) = neighborsX[j](d) - X(d);
-                            xiII(d) = neighborsx[j](d) - x(d);
-                        }
-                        
-                        Eigen::VectorXd R2tmp_pd = JInII * PP2(XiI, XiII, xiI, xiII, C2, Delta, PD);
-                        Eigen::Vector3d R2tmp = Eigen::Vector3d::Zero();
-                        for (int d = 0; d < PD; d++) {
-                            R2tmp(d) = R2tmp_pd(d);
-                        }
-                        R2 = R2 + R2tmp;
+            for (int i = 0; i < NNgbr; ++i) {
+                for (int j = 0; j < NNgbr; ++j) {
+                    if (j == i) continue;
+
+                    for (int d = 0; d < PD; ++d) {
+                        XiI(d)  = Xi3[i](d);
+                        xiI(d)  = xi3[i](d);
+                        XiII(d) = Xi3[j](d);
+                        xiII(d) = xi3[j](d);
                     }
+                    R += JInII * PP2(XiI, XiII, xiI, xiII, C2, Delta, PD);
+
                 }
             }
         }
-        
+
         // 3-neighbor residual (3D only)
         if (C3 != 0.0 && PD == 3) {
-            for (int i = 0; i < NNgbr; i++) {
-                for (int j = 0; j < NNgbr; j++) {
-                    if (j != i) {
-                        for (int k = 0; k < NNgbr; k++) {
-                            if ((k != i) && (k != j)) {
-                                Eigen::Vector3d XiI = neighborsX[i] - X;
-                                Eigen::Vector3d xiI = neighborsx[i] - x;
-                                Eigen::Vector3d XiII = neighborsX[j] - X;
-                                Eigen::Vector3d xiII = neighborsx[j] - x;
-                                Eigen::Vector3d XiIII = neighborsX[k] - X;
-                                Eigen::Vector3d xiIII = neighborsx[k] - x;
-                                
-                                Eigen::Vector3d R3tmp = JInIInIII * PP3(XiI, XiII, XiIII, xiI, xiII, xiIII, C3, Delta);
-                                R3 = R3 + R3tmp;
-                            }
-                        }
+            Eigen::Vector3d R3 = Eigen::Vector3d::Zero();
+            for (int i = 0; i < NNgbr; ++i) {
+                for (int j = 0; j < NNgbr; ++j) {
+                    if (j == i) continue;
+                    for (int k = 0; k < NNgbr; ++k) {
+                        if (k == i || k == j) continue;
+
+                        R3 += JInIInIII * PP3(Xi3[i], Xi3[j], Xi3[k],
+                                              xi3[i], xi3[j], xi3[k],
+                                              C3, Delta);
                     }
                 }
             }
+            R = R + R3;
         }
-        
-        R = R1 + R2 + R3;
+
+        point.residual.resize(PD);
         point.residual = R;
-        
+
         // ==================== STIFFNESS CALCULATION ====================
-        // Create extended neighbor list (neighbors + self)
-        int NNgbrE = NNgbr + 1;
-        std::vector<int> neighborsE = neighbors;
-        std::vector<Eigen::Vector3d> neighborsEx = neighborsx;
-        std::vector<Eigen::Vector3d> neighborsEX = neighborsX;
+// Create extended neighbor list (neighbors + self)
+int NNgbrE = NNgbr + 1;
+std::vector<int> neighborsE = neighbors;
+neighborsE.push_back(p);  // Add self (Nr)
+
+// Initialize stiffness matrix (PD*PD x NNgbrE)
+Eigen::MatrixXd K = Eigen::MatrixXd::Zero(PD * PD, NNgbrE);
+
+// 1-neighbor stiffness
+if (C1 != 0.0) {
+    for (int i = 0; i < NNgbr; i++) {
+        Eigen::VectorXd XiI(PD);
+        Eigen::VectorXd xiI(PD);
+        for (int d = 0; d < PD; d++) {
+            XiI(d) = neighborsX[i](d) - X(d);
+            xiI(d) = neighborsx[i](d) - x(d);
+        }
         
-        neighborsE.push_back(Nr);
-        neighborsEx.push_back(x);
-        neighborsEX.push_back(X);
-        
-        // Initialize stiffness matrix (PD*PD x NNgbrE)
-        Eigen::MatrixXd K = Eigen::MatrixXd::Zero(PD * PD, NNgbrE);
-        Eigen::MatrixXd K1 = Eigen::MatrixXd::Zero(PD * PD, NNgbrE);
-        Eigen::MatrixXd K2 = Eigen::MatrixXd::Zero(PD * PD, NNgbrE);
-        Eigen::MatrixXd K3 = Eigen::MatrixXd::Zero(PD * PD, NNgbrE);
-        
-        int a = Nr;
-        
-        // 1-neighbor stiffness
-        if (C1 != 0.0) {
-            for (int i = 0; i < NNgbr; i++) {
-                Eigen::VectorXd XiI(PD);
-                Eigen::VectorXd xiI(PD);
-                for (int d = 0; d < PD; d++) {
-                    XiI(d) = neighborsX[i](d) - X(d);
-                    xiI(d) = neighborsx[i](d) - x(d);
-                }
-                
-                Eigen::MatrixXd AA1I = AA1(XiI, xiI, C1, PD);
-                
-                for (int b = 0; b < NNgbrE; b++) {
-                    double factor = ((neighbors[i] == neighborsE[b]) ? 1.0 : 0.0) - ((a == neighborsE[b]) ? 1.0 : 0.0);
-                    Eigen::MatrixXd K1tmp = JI * factor * AA1I;
-                    
-                    // Flatten to column vector (column-major order)
-                    Eigen::VectorXd K1tmp_vec(PD * PD);
-                    int idx = 0;
-                    for (int col = 0; col < PD; col++) {
-                        for (int row = 0; row < PD; row++) {
-                            K1tmp_vec(idx++) = K1tmp(row, col);
-                        }
-                    }
-                    
-                    K1.col(b) = K1.col(b) + K1tmp_vec;
+        Eigen::MatrixXd AA1I = AA1(XiI, xiI, C1, PD);
+        for (int b = 0; b < NNgbrE; b++) {
+            
+            double factor_i = (neighbors[i] == neighborsE[b] ? 1.0 : 0.0) - 
+                              (p == neighborsE[b] ? 1.0 : 0.0);
+            
+            Eigen::MatrixXd K1tmp = JI * AA1I * factor_i;
+            
+            // Flatten to column vector (COLUMN-MAJOR order - matching MATLAB (:))
+            for (int col = 0; col < PD; col++) {
+                for (int row = 0; row < PD; row++) {
+                    K(row + col * PD, b) += K1tmp(row, col);
                 }
             }
         }
-        
-        // 2-neighbor stiffness
-        if (C2 != 0.0) {
-            for (int i = 0; i < NNgbr; i++) {
-                for (int j = 0; j < NNgbr; j++) {
-                    if (j != i) {
-                        Eigen::VectorXd XiI(PD), XiII(PD);
-                        Eigen::VectorXd xiI(PD), xiII(PD);
-                        for (int d = 0; d < PD; d++) {
-                            XiI(d) = neighborsX[i](d) - X(d);
-                            xiI(d) = neighborsx[i](d) - x(d);
-                            XiII(d) = neighborsX[j](d) - X(d);
-                            xiII(d) = neighborsx[j](d) - x(d);
-                        }
-                        
-                        auto [AA2I, AA2J] = AA2(XiI, XiII, xiI, xiII, C2, Delta, PD);
-                        
-                        for (int b = 0; b < NNgbrE; b++) {
-                            double factor_i = ((neighbors[i] == neighborsE[b]) ? 1.0 : 0.0) - ((a == neighborsE[b]) ? 1.0 : 0.0);
-                            double factor_j = ((neighbors[j] == neighborsE[b]) ? 1.0 : 0.0) - ((a == neighborsE[b]) ? 1.0 : 0.0);
-                            
-                            Eigen::MatrixXd K2tmp = JInII * (factor_i * AA2I + factor_j * AA2J);
-                            
-                            // Flatten to column vector (column-major order)
-                            Eigen::VectorXd K2tmp_vec(PD * PD);
-                            int idx = 0;
-                            for (int col = 0; col < PD; col++) {
-                                for (int row = 0; row < PD; row++) {
-                                    K2tmp_vec(idx++) = K2tmp(row, col);
-                                }
-                            }
-                            
-                            K2.col(b) = K2.col(b) + K2tmp_vec;
-                        }
-                    }
-                }
-            }
-        }
-        
-        // 3-neighbor stiffness (3D only)
-        if (C3 != 0.0 && PD == 3) {
-            for (int i = 0; i < NNgbr; i++) {
-                for (int j = 0; j < NNgbr; j++) {
-                    if (j != i) {
-                        for (int k = 0; k < NNgbr; k++) {
-                            if ((k != i) && (k != j)) {
-                                Eigen::Vector3d XiI = neighborsX[i] - X;
-                                Eigen::Vector3d xiI = neighborsx[i] - x;
-                                Eigen::Vector3d XiII = neighborsX[j] - X;
-                                Eigen::Vector3d xiII = neighborsx[j] - x;
-                                Eigen::Vector3d XiIII = neighborsX[k] - X;
-                                Eigen::Vector3d xiIII = neighborsx[k] - x;
-                                
-                                auto [AA3I, AA3J, AA3K] = AA3(XiI, XiII, XiIII, xiI, xiII, xiIII, C3, Delta);
-                                
-                                for (int b = 0; b < NNgbrE; b++) {
-                                    double factor_i = ((neighbors[i] == neighborsE[b]) ? 1.0 : 0.0) - ((a == neighborsE[b]) ? 1.0 : 0.0);
-                                    double factor_j = ((neighbors[j] == neighborsE[b]) ? 1.0 : 0.0) - ((a == neighborsE[b]) ? 1.0 : 0.0);
-                                    double factor_k = ((neighbors[k] == neighborsE[b]) ? 1.0 : 0.0) - ((a == neighborsE[b]) ? 1.0 : 0.0);
-                                    
-                                    Eigen::Matrix3d K3tmp = JInIInIII * (factor_i * AA3I + factor_j * AA3J + factor_k * AA3K);
-                                    
-                                    // Flatten to column vector (column-major order)
-                                    Eigen::VectorXd K3tmp_vec(9);
-                                    int idx = 0;
-                                    for (int col = 0; col < 3; col++) {
-                                        for (int row = 0; row < 3; row++) {
-                                            K3tmp_vec(idx++) = K3tmp(row, col);
-                                        }
-                                    }
-                                    
-                                    K3.col(b) = K3.col(b) + K3tmp_vec;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        K = K1 + K2 + K3;
-        
-        // Store stiffness matrix (flattened, column-major)
-        point.stiffness.resize(PD * PD * NNgbrE);
-        int idx = 0;
-        for (int col = 0; col < NNgbrE; col++) {
-            for (int row = 0; row < PD * PD; row++) {
-                point.stiffness(idx++) = K(row, col);
-            }
-        }
-        
-        // Store extended neighbor list
-        point.neighbors = neighborsE;
+
     }
 }
 
-// ============================================================================
-// ASSEMBLY: Assemble global residual vector and stiffness matrix
-// ============================================================================
+// 2-neighbor stiffness  
+if (C2 != 0.0) {
+    for (int i = 0; i < NNgbr; i++) {
+        for (int j = 0; j < NNgbr; j++) {
+            if (j != i) {  
+                Eigen::VectorXd XiI(PD), XiII(PD);
+                Eigen::VectorXd xiI(PD), xiII(PD);
+                for (int d = 0; d < PD; d++) {
+                    XiI(d) = neighborsX[i](d) - X(d);
+                    xiI(d) = neighborsx[i](d) - x(d);
+                    XiII(d) = neighborsX[j](d) - X(d);
+                    xiII(d) = neighborsx[j](d) - x(d);
+                }
+                
+                auto [AA2I, AA2J] = AA2(XiI, XiII, xiI, xiII, C2, Delta, PD);
+                
+                for (int b = 0; b < NNgbrE; b++) {
+                    
+                    double factor_i = (neighbors[i] == neighborsE[b] ? 1.0 : 0.0) - 
+                                      (Nr == neighborsE[b] ? 1.0 : 0.0);
+                    double factor_j = (neighbors[j] == neighborsE[b] ? 1.0 : 0.0) - 
+                                      (Nr == neighborsE[b] ? 1.0 : 0.0);
+                    
+                    Eigen::MatrixXd K2tmp = JInII * (AA2I * factor_i + AA2J * factor_j);
+                    
+                    // Flatten to column vector
+                    for (int col = 0; col < PD; col++) {
+                        for (int row = 0; row < PD; row++) {
+                            K(row + col * PD, b) += K2tmp(row, col);
+                        }
+
+                    }
+                    
+                }
+            }
+        }
+    }
+}
+
+// Store stiffness matrix (flattened, column-major)
+point.stiffness.resize(PD * PD * NNgbrE);
+int idx = 0;
+for (int col = 0; col < NNgbrE; col++) {
+    for (int row = 0; row < PD * PD; row++) {
+        point.stiffness[idx++] = K(row, col);
+    }
+}
+// if (Nr == 23) {  // Your debug shows Point 22 has Nr=23
+//     static bool first_time = true;
+//     if (first_time) {
+//         std::cout << "\n>>>> [DEBUG STIFFNESS POINT 23 - C++ ITERATION " << global_iter_count << "]" << std::endl;
+//                 std::cout << "JI: " << JI << " | JInII: " << JInII << std::endl;
+        
+//         int self_col = NNgbr; 
+//                 std::cout << "K-Self (PD*PD vector):" << std::endl;
+//                 for (int row = 0; row < PD * PD; ++row) {
+//                     std::cout << "  " << K(row, self_col) << std::endl;
+//                 }
+//                 std::cout << "<<<< END STIFFNESS DEBUG" << std::endl;
+//             }
+// }
+// // ========== END DEBUG ==========
+    }
+}
+
+
 
 // ============================================================================
 // ASSEMBLY: Assemble global residual vector and stiffness matrix
@@ -1846,66 +1833,82 @@ void assembly(const std::vector<Point>& point_list, int DOFs, Eigen::VectorXd& R
               Eigen::SparseMatrix<double>& K, const std::string& flag) {
     if (flag == "residual") {
         R.setZero(); // Reset residual vector
-
-        // Assemble residual: R = R_internal + R_external
+        
+        
         for (const auto& point : point_list) {
-            Eigen::Vector3d R_P = point.residual + point.F_ext; // Internal + external forces
-            std::vector<int> BCflg = point.BCflg;
-            std::vector<int> DOF = point.DOF;
             int PD = point.PD;
-
-            // Only assemble for free DOFs (BCflg = 1)
+            Eigen::VectorXd R_P = point.residual.head(PD) + point.F_ext.head(PD);
+            const std::vector<int>& BCflg = point.BCflg;
+            const std::vector<int>& DOF = point.DOF;
+            
             for (int d = 0; d < PD; d++) {
                 if (BCflg[d] == 1 && DOF[d] > 0) {
-                    R(DOF[d] - 1) += R_P(d); // Adjust for 0-based indexing
+                    R(DOF[d] - 1) += R_P(d);
                 }
             }
         }
+        
     }
     else if (flag == "stiffness") {
-        K.setZero();
-        std::vector<Eigen::Triplet<double>> triplets; // Triplet list for sparse matrix
+    K.resize(DOFs, DOFs);
+    K.setZero();
+    std::vector<Eigen::Triplet<double>> triplets;
+    triplets.reserve(point_list.size() * 16);
 
-        // Assemble stiffness matrix
-        for (const auto& point : point_list) {
-            std::vector<int> BCflg_p = point.BCflg;
-            std::vector<int> DOF_p = point.DOF;
-            int PD = point.PD;
-            
-            // Extended neighbor list (already includes the point itself from calculate_rk)
-            std::vector<int> neighborsE = point.neighbors;
-            int NNgbrE = neighborsE.size();
+    // Use INDEXED loop to know array index
+    for (size_t i = 0; i < point_list.size(); i++) {
+        const auto& point = point_list[i];
+        const std::vector<int>& BCflg_p = point.BCflg;
+        const std::vector<int>& DOF_p = point.DOF;
+        int PD = point.PD;
+        
+        // Recreate neighborsE EXACTLY as in calculate_rk
+        std::vector<int> neighborsE = point.neighbors;  // Contains array indices
+        neighborsE.push_back(i);  // Add array index i, NOT point.Nr!
+        int NNgbrE = neighborsE.size();
 
-            // Only points with free DOFs contribute as rows
-            for (int d_p = 0; d_p < PD; d_p++) {
-                if (BCflg_p[d_p] == 1 && DOF_p[d_p] > 0) {
+        // For each free DOF
+        for (int d_p = 0; d_p < PD; d_p++) {
+            if (BCflg_p[d_p] == 1 && DOF_p[d_p] > 0) {
+                int row_global = DOF_p[d_p] - 1;
+                
+                for (int q = 0; q < NNgbrE; q++) {
+                    int nbr_idx = neighborsE[q];  // This is array index
                     
-                    for (int q = 0; q < NNgbrE; q++) {
-                        int nbr_idx = neighborsE[q];
-                        std::vector<int> BCflg_q = point_list[nbr_idx].BCflg;
-                        std::vector<int> DOF_q = point_list[nbr_idx].DOF;
-
-                        // Only neighbor points with free DOFs contribute as columns
-                        for (int d_q = 0; d_q < PD; d_q++) {
-                            if (BCflg_q[d_q] == 1 && DOF_q[d_q] > 0) {
-                                // Extract correct stiffness value from flattened matrix
-                                // K is stored as PD*PD rows x NNgbrE columns in column-major order
-                                int row_idx = d_p + d_q * PD; // Column-major indexing
-                                int col_idx = q;
-                                double Kval = point.stiffness[row_idx + col_idx * (PD * PD)];
-                                
-                                // Add contribution to K(DOF_p, DOF_q)
-                                triplets.emplace_back(DOF_p[d_p] - 1, DOF_q[d_q] - 1, Kval); 
+                    // Check bounds
+                    if (nbr_idx < 0 || nbr_idx >= (int)point_list.size()) {
+                        std::cerr << "ERROR: Invalid neighbor index " << nbr_idx 
+                                  << " for point " << i << std::endl;
+                        continue;
+                    }
+                    
+                    const auto& nbr_point = point_list[nbr_idx];
+                    const std::vector<int>& BCflg_q = nbr_point.BCflg;
+                    const std::vector<int>& DOF_q = nbr_point.DOF;
+                    
+                    for (int d_q = 0; d_q < PD; d_q++) {
+                        if (BCflg_q[d_q] == 1 && DOF_q[d_q] > 0) {
+                            int col_global = DOF_q[d_q] - 1;
+                            
+                            // Get stiffness value - CORRECT INDEXING
+                            // Stiffness stored as: PD*PD rows x NNgbrE columns
+                            // Column-major within each block
+                            int local_index = d_p + d_q * PD;  // Column-major in 2x2 block
+                            int flat_index = local_index + q * (PD * PD);
+                            
+                            if (flat_index >= 0 && flat_index < (int)point.stiffness.size()) {
+                                double Kval = point.stiffness[flat_index];
+                                triplets.emplace_back(row_global, col_global, Kval);
                             }
                         }
                     }
                 }
             }
         }
-
-        K.resize(DOFs, DOFs);
-        K.setFromTriplets(triplets.begin(), triplets.end());
     }
+    
+    K.setFromTriplets(triplets.begin(), triplets.end());
+}
 }
 
 // ============================================================================
@@ -1934,7 +1937,8 @@ void update_points(std::vector<Point>& PL, double LF, Eigen::VectorXd& dx,
         for (int i = 0; i < NoPs; i++) {
             if (PL[i].Flag == "Right Patch") {
                 // Distribute total prescribed force F_prescribed among all right patch points
-                PL[i].F_ext = LF * F_prescribed / number_of_right_patches;
+                PL[i].F_ext.setZero();
+                PL[i].F_ext(0) = LF * F_prescribed / number_of_right_patches;
             }
         }
     }

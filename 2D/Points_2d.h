@@ -17,56 +17,46 @@
 // Point class definition to match Matlab structure and C++ implementation
 class Point {
 public:
-    int Nr;
-    int NNr;  // Node number reference (index in original NL)
-    int PD;
-    Eigen::Vector3d X;  // Reference coordinates
-    Eigen::Vector3d x;  // Current coordinates
-    std::vector<int> neighbors;
-    std::vector<Eigen::Vector3d> neighborsX_vec;  // Reference positions of neighbors
-    std::vector<Eigen::Vector3d> neighborsx_vec;  // Current positions of neighbors
-    int NI;           // Number of 1st neighbors
-    int NInII;        // Number of 1st and 2nd neighbor combinations
-    int NInIInIII;    // Number of 1st, 2nd and 3rd neighbor combinations
-    double AV;        // Area/volume in peridynamic sense
-    double Vol;       // Volume of the point
-    double L;         // Lattice length
-    double Delta;     // Horizon size
-    int Mat;          // Material identifier
-    std::vector<double> MatPars;  // Material parameters
-    std::string MatLaw;           // Constitutive law
-    std::vector<int> BCflg;       // Boundary condition flags
-    std::vector<double> BCval;    // Boundary condition values
-    std::vector<int> DOF;         // Global degree of freedom numbers
-    std::string Flag;             // Point flag (e.g., "Right Patch")
-    double psi;                   // Strain energy
-    double residual;              // Residual force
-    Eigen::VectorXd stiffness;    // Stiffness vector
-    double F_ext;                 // External force
+    int Nr = 0;
+    int NNr = 0;                 // used in Topology
+    int PD = 0;
 
-    // Constructors
-    Point(int id, const Eigen::Vector3d& position) : Nr(id), X(position) {
-        x = X; // Initialize current position to reference position
-        NNr = 0;
-        PD = 3; // Default to 3D
-        NI = 0;
-        NInII = 0;
-        NInIInIII = 0;
-        AV = 0.0;
-        Vol = 0.0;
-        L = 0.0;
-        Delta = 0.0;
-        Mat = 0;
-        F_ext = 0.0;
-        psi = 0.0;
-        residual = 0.0;
-        Flag = "";
-    }
-    
-    Point() : Nr(0), NNr(0), PD(0), NI(0), NInII(0), NInIInIII(0), 
-              AV(0.0), Vol(0.0), L(0.0), Delta(0.0), Mat(0), 
-              F_ext(0.0), psi(0.0), residual(0.0), Flag("") {}
+    Eigen::Vector3d X = Eigen::Vector3d::Zero();
+    Eigen::Vector3d x = Eigen::Vector3d::Zero();
+
+    std::vector<int> neighbors;
+    std::vector<Eigen::Vector3d> neighborsx_vec;
+    std::vector<Eigen::Vector3d> neighborsX_vec;
+
+    int NI = 0;
+    int NInII = 0;
+    int NInIInIII = 0;
+
+    double AV = 0.0;
+    double Vol = 0.0;
+    double L = 0.0;
+    double Delta = 0.0;
+
+    int Mat = 0;
+    std::vector<double> MatPars;
+    std::string MatLaw;
+
+    std::vector<int> BCflg;      // size PD
+    std::vector<double> BCval;   // size PD
+    std::vector<int> DOF;        // size PD
+
+    std::string Flag;
+    double psi = 0.0;
+
+    Eigen::VectorXd residual;
+    Eigen::VectorXd stiffness;   // you write stiffness(idx)=... in calculate_rk
+    Eigen::VectorXd F_ext;
+
+    Point() = default;
+
+    Point(int id, const Eigen::Vector3d& pos) : Nr(id), X(pos), x(pos) {}
 };
+
 
 // Element class definition to match Matlab structure
 class Element {
@@ -100,8 +90,8 @@ Eigen::Matrix3d Compute_FF(int PD, double d, const std::string& DEFflag);
 std::vector<Point> FreeAllPoints(std::vector<Point> PL);
 std::pair<std::vector<Point>, int> AssignGlobalDOF(std::vector<Point> PL);
 std::pair<std::vector<Point>, int> AssignBCs(const std::vector<Eigen::Vector3d>& Corners, std::vector<Point> PL, const Eigen::Matrix3d& FF, const std::string& BCflag, const std::string& PatchFlag);
-void calculate_rk(std::vector<Point>& PL, double C1, double delta, double nn);
+void calculate_rk(std::vector<Point>& PL, double C1, double C2, double delta, int PD);
 void assembly(const std::vector<Point>& point_list, int DOFs, Eigen::VectorXd& R, Eigen::SparseMatrix<double>& K, const std::string& flag);
 void update_points(std::vector<Point>& PL, double LF, Eigen::VectorXd& dx, const std::string& Update_flag, double F_prescribed, int number_of_right_patches);
-
+void debug_point_29(const std::vector<Point>& PL, int point_idx, double C1, double C2, double Delta, int PD);
 #endif //POINTS_H

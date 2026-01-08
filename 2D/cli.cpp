@@ -19,6 +19,7 @@ CLIOptions parseArguments(int argc, char* argv[]) {
         else if (arg == "--patches") options.number_of_patches = std::atoi(next());
         else if (arg == "--rpatches") options.number_of_right_patches = std::atoi(next());
         else if (arg == "--C1") options.C1 = std::atof(next());
+        else if (arg == "--C2") options.C2 = std::atof(next());
         else if (arg == "--nn") options.nn = std::atof(next());
         else if (arg == "--d") options.d = std::atof(next());
         else if (arg == "--force") options.F_prescribed = std::atof(next());
